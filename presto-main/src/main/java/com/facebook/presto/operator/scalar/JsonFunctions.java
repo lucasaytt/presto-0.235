@@ -440,6 +440,15 @@ public final class JsonFunctions
         return JsonExtract.extract(json, jsonPath.getScalarExtractor());
     }
 
+    @ScalarFunction("get_json_object")
+    @SqlNullable
+    @LiteralParameters("x")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice varcharGetJsonObject(@SqlType("varchar(x)") Slice json, @SqlType(JsonPathType.NAME) JsonPath jsonPath)
+    {
+        return JsonExtract.extract(json, jsonPath.getObjectExtractor());
+    }
+
     @ScalarFunction
     @SqlNullable
     @SqlType(StandardTypes.VARCHAR)

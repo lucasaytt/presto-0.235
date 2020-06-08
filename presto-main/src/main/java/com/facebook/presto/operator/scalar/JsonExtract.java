@@ -288,11 +288,23 @@ public final class JsonExtract
                 throw new JsonParseException(jsonParser, "Unexpected end of value");
             }
 
-            DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(ESTIMATED_JSON_OUTPUT_SIZE);
-            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, dynamicSliceOutput)) {
-                jsonGenerator.copyCurrentStructure(jsonParser);
+//            DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(ESTIMATED_JSON_OUTPUT_SIZE);
+//            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, dynamicSliceOutput)) {
+//                jsonGenerator.copyCurrentStructure(jsonParser);
+//            }
+//            return dynamicSliceOutput.slice();
+            JsonToken token = jsonParser.getCurrentToken();
+
+            if(token.isScalarValue()){
+                return utf8Slice(jsonParser.getText());
+            } else {
+                DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(ESTIMATED_JSON_OUTPUT_SIZE);
+
+                try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, dynamicSliceOutput).setRootValueSeparator(null)) {
+                    jsonGenerator.copyCurrentStructure(jsonParser);
+                }
+                return dynamicSliceOutput.slice();
             }
-            return dynamicSliceOutput.slice();
         }
     }
 
