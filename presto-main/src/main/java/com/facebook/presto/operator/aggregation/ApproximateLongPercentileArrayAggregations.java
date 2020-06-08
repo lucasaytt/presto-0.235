@@ -37,7 +37,7 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.util.Failures.checkCondition;
 
-@AggregationFunction("approx_percentile")
+@AggregationFunction("percentile_approx")
 public final class ApproximateLongPercentileArrayAggregations
 {
     private ApproximateLongPercentileArrayAggregations() {}
@@ -65,8 +65,8 @@ public final class ApproximateLongPercentileArrayAggregations
     public static void weightedInput(
             @AggregationState DigestAndPercentileArrayState state,
             @SqlType(StandardTypes.BIGINT) long value,
-            @SqlType(StandardTypes.BIGINT) long weight,
-            @SqlType("array(double)") Block percentilesArrayBlock)
+            @SqlType("array(double)") Block percentilesArrayBlock,
+            @SqlType(StandardTypes.BIGINT) long weight)
     {
         checkWeight(weight);
         addInput(state, value, weight, percentilesArrayBlock, DEFAULT_ACCURACY);
@@ -76,8 +76,8 @@ public final class ApproximateLongPercentileArrayAggregations
     public static void weightedInput(
             @AggregationState DigestAndPercentileArrayState state,
             @SqlType(StandardTypes.BIGINT) long value,
-            @SqlType(StandardTypes.BIGINT) long weight,
             @SqlType("array(double)") Block percentilesArrayBlock,
+            @SqlType(StandardTypes.BIGINT) long weight,
             @SqlType(StandardTypes.DOUBLE) double accuracy)
     {
         checkWeight(weight);

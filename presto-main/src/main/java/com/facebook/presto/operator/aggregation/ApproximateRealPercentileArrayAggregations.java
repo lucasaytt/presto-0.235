@@ -33,7 +33,7 @@ import static com.facebook.presto.spi.type.RealType.REAL;
 import static java.lang.Float.floatToRawIntBits;
 import static java.lang.Float.intBitsToFloat;
 
-@AggregationFunction("approx_percentile")
+@AggregationFunction("percentile_approx")
 public class ApproximateRealPercentileArrayAggregations
 {
     private ApproximateRealPercentileArrayAggregations() {}
@@ -61,21 +61,21 @@ public class ApproximateRealPercentileArrayAggregations
     public static void weightedInput(
             @AggregationState DigestAndPercentileArrayState state,
             @SqlType(StandardTypes.REAL) long value,
-            @SqlType(StandardTypes.BIGINT) long weight,
-            @SqlType("array(double)") Block percentilesArrayBlock)
+            @SqlType("array(double)") Block percentilesArrayBlock,
+            @SqlType(StandardTypes.BIGINT) long weight)
     {
-        ApproximateLongPercentileArrayAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), weight, percentilesArrayBlock);
+        ApproximateLongPercentileArrayAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), percentilesArrayBlock, weight);
     }
 
     @InputFunction
     public static void weightedInput(
             @AggregationState DigestAndPercentileArrayState state,
             @SqlType(StandardTypes.REAL) long value,
-            @SqlType(StandardTypes.BIGINT) long weight,
             @SqlType("array(double)") Block percentilesArrayBlock,
+            @SqlType(StandardTypes.BIGINT) long weight,
             @SqlType(StandardTypes.DOUBLE) double accuracy)
     {
-        ApproximateLongPercentileArrayAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), weight, percentilesArrayBlock, accuracy);
+        ApproximateLongPercentileArrayAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), percentilesArrayBlock, weight, accuracy);
     }
 
     @CombineFunction

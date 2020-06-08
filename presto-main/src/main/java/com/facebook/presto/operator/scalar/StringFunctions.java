@@ -283,14 +283,14 @@ public final class StringFunctions
     @SqlType("varchar(x)")
     public static Slice substr(@SqlType("varchar(x)") Slice utf8, @SqlType(StandardTypes.BIGINT) long start)
     {
-        if ((start == 0) || utf8.length() == 0) {
+        if (utf8.length() == 0) {
             return Slices.EMPTY_SLICE;
         }
 
         int startCodePoint = Ints.saturatedCast(start);
 
-        if (startCodePoint > 0) {
-            int indexStart = offsetOfCodePoint(utf8, startCodePoint - 1);
+        if (startCodePoint >= 0) {
+            int indexStart = offsetOfCodePoint(utf8, startCodePoint == 0 ? startCodePoint : startCodePoint - 1);
             if (indexStart < 0) {
                 // before beginning of string
                 return Slices.EMPTY_SLICE;
@@ -330,16 +330,17 @@ public final class StringFunctions
     @SqlType("varchar(x)")
     public static Slice substr(@SqlType("varchar(x)") Slice utf8, @SqlType(StandardTypes.BIGINT) long start, @SqlType(StandardTypes.BIGINT) long length)
     {
-        if (start == 0 || (length <= 0) || (utf8.length() == 0)) {
+//        if (start == 0 || (length <= 0) || (utf8.length() == 0)) {
+        if (utf8.length() == 0) {
             return Slices.EMPTY_SLICE;
         }
+
 
         int startCodePoint = Ints.saturatedCast(start);
         int lengthCodePoints = Ints.saturatedCast(length);
 
-        if (startCodePoint > 0) {
-            int indexStart = offsetOfCodePoint(utf8, startCodePoint - 1);
-            if (indexStart < 0) {
+        if (startCodePoint >= 0) {
+            int indexStart = offsetOfCodePoint(utf8, startCodePoint == 0 ? startCodePoint : startCodePoint - 1);            if (indexStart < 0) {
                 // before beginning of string
                 return Slices.EMPTY_SLICE;
             }

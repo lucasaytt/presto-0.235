@@ -33,7 +33,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Float.floatToRawIntBits;
 import static java.lang.Float.intBitsToFloat;
 
-@AggregationFunction("approx_percentile")
+@AggregationFunction("percentile_approx")
 public class ApproximateRealPercentileAggregations
 {
     private ApproximateRealPercentileAggregations() {}
@@ -61,21 +61,21 @@ public class ApproximateRealPercentileAggregations
     public static void weightedInput(
             @AggregationState DigestAndPercentileState state,
             @SqlType(StandardTypes.REAL) long value,
-            @SqlType(StandardTypes.BIGINT) long weight,
-            @SqlType(StandardTypes.DOUBLE) double percentile)
+            @SqlType(StandardTypes.DOUBLE) double percentile,
+            @SqlType(StandardTypes.BIGINT) long weight)
     {
-        ApproximateLongPercentileAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), weight, percentile);
+        ApproximateLongPercentileAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), percentile, weight);
     }
 
     @InputFunction
     public static void weightedInput(
             @AggregationState DigestAndPercentileState state,
             @SqlType(StandardTypes.REAL) long value,
-            @SqlType(StandardTypes.BIGINT) long weight,
             @SqlType(StandardTypes.DOUBLE) double percentile,
+            @SqlType(StandardTypes.BIGINT) long weight,
             @SqlType(StandardTypes.DOUBLE) double accuracy)
     {
-        ApproximateLongPercentileAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), weight, percentile, accuracy);
+        ApproximateLongPercentileAggregations.weightedInput(state, floatToSortableInt(intBitsToFloat((int) value)), percentile, weight, accuracy);
     }
 
     @CombineFunction

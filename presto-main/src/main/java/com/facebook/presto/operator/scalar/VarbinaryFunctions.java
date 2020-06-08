@@ -383,7 +383,7 @@ public final class VarbinaryFunctions
     @SqlType(StandardTypes.VARBINARY)
     public static Slice substr(@SqlType(StandardTypes.VARBINARY) Slice slice, @SqlType(StandardTypes.BIGINT) long start, @SqlType(StandardTypes.BIGINT) long length)
     {
-        if (start == 0 || length <= 0 || slice.length() == 0) {
+        if (length <= 0 || slice.length() == 0) {
             return EMPTY_SLICE;
         }
 
@@ -391,7 +391,7 @@ public final class VarbinaryFunctions
         int byteLength = Ints.saturatedCast(length);
 
         if (startByte > 0) {
-            int indexStart = startByte - 1; // index starts with 1.
+            int indexStart = startByte == 0 ? startByte : startByte - 1; // index starts with 1.
             if (indexStart >= slice.length()) {
                 return EMPTY_SLICE;
             }
