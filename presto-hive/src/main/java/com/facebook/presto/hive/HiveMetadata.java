@@ -516,7 +516,7 @@ public class HiveMetadata
     {
         Optional<Table> table = metastore.getTable(tableName.getSchemaName(), tableName.getTableName());
         log.info("======="+table.isPresent()+" "+table.get().getTableType().name()+" "+VIRTUAL_VIEW.name());
-        if (!table.isPresent() || table.get().getTableType().equals(VIRTUAL_VIEW)) {
+        if (!table.isPresent()) {
             throw new TableNotFoundException(tableName);
         }
 
