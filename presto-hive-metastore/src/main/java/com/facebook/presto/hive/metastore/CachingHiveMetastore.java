@@ -86,6 +86,7 @@ public class CachingHiveMetastore
     private final LoadingCache<UserTableKey, Set<HivePrivilegeInfo>> tablePrivilegesCache;
     private final LoadingCache<String, Set<String>> rolesCache;
     private final LoadingCache<PrestoPrincipal, Set<RoleGrant>> roleGrantsCache;
+    private boolean cacheTempDatabaseTableEnabled;
 
     @Inject
     public CachingHiveMetastore(@ForCachingHiveMetastore ExtendedHiveMetastore delegate, @ForCachingHiveMetastore ExecutorService executor, MetastoreClientConfig metastoreClientConfig)
@@ -96,6 +97,7 @@ public class CachingHiveMetastore
                 metastoreClientConfig.getMetastoreCacheTtl(),
                 metastoreClientConfig.getMetastoreRefreshInterval(),
                 metastoreClientConfig.getMetastoreCacheMaximumSize());
+        this.cacheTempDatabaseTableEnabled = metastoreClientConfig.isCacheTempDatabaseTableEnabled();
     }
 
     public CachingHiveMetastore(ExtendedHiveMetastore delegate, ExecutorService executor, Duration cacheTtl, Duration refreshInterval, long maximumSize)
@@ -261,7 +263,14 @@ public class CachingHiveMetastore
     @Override
     public Optional<Table> getTable(String databaseName, String tableName)
     {
-        return get(tableCache, hiveTableName(databaseName, tableName));
+        Optional<Table> table = get(tableCache, hiveTableName(databaseName, tableName));
+
+        //如果不需要cache 含有temp库的表,直接跳过
+        if(!cacheTempDatabaseTableEnabled && databaseName.contains("temp")){
+            invalidateTable(databaseName, tableName);
+        }
+//        return get(tableCache, hiveTableName(databaseName, tableName));
+        return table;
     }
 
     @Override

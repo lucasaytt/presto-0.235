@@ -41,10 +41,21 @@ public class MetastoreClientConfig
     private String recordingPath;
     private boolean replay;
     private Duration recordingDuration = new Duration(0, MINUTES);
+    private boolean cacheTempDatabaseTableEnabled = true;
 
     public HostAndPort getMetastoreSocksProxy()
     {
         return metastoreSocksProxy;
+    }
+
+    public boolean isCacheTempDatabaseTableEnabled() {
+        return cacheTempDatabaseTableEnabled;
+    }
+
+    @Config("hive.cache-tempdatabasetable-enabled")
+    public MetastoreClientConfig setCacheTempDatabaseTableEnabled(boolean cacheTempDatabaseTableEnabled) {
+        this.cacheTempDatabaseTableEnabled = cacheTempDatabaseTableEnabled;
+        return this;
     }
 
     @Config("hive.metastore.thrift.client.socks-proxy")
