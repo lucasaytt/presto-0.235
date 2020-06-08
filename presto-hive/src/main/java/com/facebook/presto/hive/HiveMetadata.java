@@ -515,8 +515,7 @@ public class HiveMetadata
     private ConnectorTableMetadata getTableMetadata(SchemaTableName tableName)
     {
         Optional<Table> table = metastore.getTable(tableName.getSchemaName(), tableName.getTableName());
-        log.info("======="+table.isPresent()+" "+table.get().getTableType().name()+" "+VIRTUAL_VIEW.name());
-        if (!table.isPresent()) {
+        if (!table.isPresent() || table.get().getTableType().equals(VIRTUAL_VIEW)) {
             throw new TableNotFoundException(tableName);
         }
 
