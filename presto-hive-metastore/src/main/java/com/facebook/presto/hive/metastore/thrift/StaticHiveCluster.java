@@ -66,7 +66,8 @@ public class StaticHiveCluster
             throws TException
     {
         List<HostAndPort> metastores = new ArrayList<>(addresses);
-        Collections.shuffle(metastores.subList(1, metastores.size()));
+//        Collections.shuffle(metastores.subList(1, metastores.size()));
+        Collections.shuffle(metastores);
 
         TException lastException = null;
         for (HostAndPort metastore : metastores) {
