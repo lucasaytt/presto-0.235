@@ -23,6 +23,7 @@ import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.TimeZoneKey;
 import io.airlift.slice.Slice;
+import io.airlift.slice.Slices;
 import io.airlift.units.Duration;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeField;
@@ -35,6 +36,10 @@ import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
 import org.joda.time.format.ISODateTimeFormat;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
@@ -159,10 +164,44 @@ public final class DateTimeFunctions
     }
 
     @ScalarFunction("from_unixtime")
-    @SqlType(StandardTypes.TIMESTAMP)
-    public static long fromUnixTime(@SqlType(StandardTypes.DOUBLE) double unixTime)
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice fromUnixTime(@SqlType(StandardTypes.DOUBLE) double unixTime)
     {
-        return Math.round(unixTime * 1000);
+//        return Math.round(unixTime * 1000);
+        long round = Math.round(unixTime * 1000);
+        LocalDateTime localDateTime = getDateTimeOfTimestamp(round);
+        try {
+            String ret = getDateTimeAsString(localDateTime, "yyyy-MM-dd HH:mm:ss");
+            return Slices.copiedBuffer(ret, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @ScalarFunction("from_unixtime")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice fromUnixTime(@SqlType(StandardTypes.DOUBLE) double unixTime, @SqlType(StandardTypes.VARCHAR) Slice format)
+    {
+        String formatExp = format.toString(StandardCharsets.UTF_8);
+        long round = Math.round(unixTime * 1000);
+        LocalDateTime localDateTime = getDateTimeOfTimestamp(round);
+        try {
+            String ret = getDateTimeAsString(localDateTime, formatExp);
+            return Slices.copiedBuffer(ret, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static String getDateTimeAsString(LocalDateTime localDateTime, String format) {
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern(format);
+        return localDateTime.format(formatter);
+    }
+
+    public static LocalDateTime getDateTimeOfTimestamp(long timestamp) {
+        Instant instant = Instant.ofEpochMilli(timestamp);
+        ZoneId zone = ZoneId.systemDefault();
+        return LocalDateTime.ofInstant(instant, zone);
     }
 
     @ScalarFunction("from_unixtime")
@@ -179,13 +218,13 @@ public final class DateTimeFunctions
         return packDateTimeWithZone(Math.round(unixTime * 1000), timeZoneKey);
     }
 
-    @ScalarFunction("from_unixtime")
-    @LiteralParameters("x")
-    @SqlType(StandardTypes.TIMESTAMP_WITH_TIME_ZONE)
-    public static long fromUnixTime(@SqlType(StandardTypes.DOUBLE) double unixTime, @SqlType("varchar(x)") Slice zoneId)
-    {
-        return packDateTimeWithZone(Math.round(unixTime * 1000), zoneId.toStringUtf8());
-    }
+//    @ScalarFunction("from_unixtime")
+//    @LiteralParameters("x")
+//    @SqlType(StandardTypes.TIMESTAMP_WITH_TIME_ZONE)
+//    public static long fromUnixTime(@SqlType(StandardTypes.DOUBLE) double unixTime, @SqlType("varchar(x)") Slice zoneId)
+//    {
+//        return packDateTimeWithZone(Math.round(unixTime * 1000), zoneId.toStringUtf8());
+//    }
 
     @ScalarFunction("to_unixtime")
     @SqlType(StandardTypes.DOUBLE)

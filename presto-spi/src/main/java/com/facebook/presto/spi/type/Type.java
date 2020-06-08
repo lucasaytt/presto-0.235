@@ -186,4 +186,6 @@ public interface Type
      * Compare the values in the specified block at the specified positions equal.
      */
     int compareTo(Block leftBlock, int leftPosition, Block rightBlock, int rightPosition);
+
+    int cost();
 }

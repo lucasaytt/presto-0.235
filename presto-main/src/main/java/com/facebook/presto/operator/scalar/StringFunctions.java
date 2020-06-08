@@ -387,7 +387,19 @@ public final class StringFunctions
     @SqlType("array(varchar(x))")
     public static Block split(@SqlType("varchar(x)") Slice string, @SqlType("varchar(y)") Slice delimiter)
     {
-        return split(string, delimiter, string.length() + 1);
+//        return split(string, delimiter, string.length() + 1);
+        if (string == null || delimiter == null) return null;
+
+        String s = string.toStringUtf8();
+        String regex = delimiter.toStringUtf8();
+        // 当delimiter为\\?，regex依然为\\?，故需要把两个\\转换为一个\
+        regex = regex.replaceAll("\\\\\\\\", "\\\\");
+        BlockBuilder parts = VARCHAR.createBlockBuilder(null, 1, string.length());
+        for (String str : s.split(regex, -1)) {
+            VARCHAR.writeSlice(parts, Slices.utf8Slice(str));
+        }
+
+        return parts;
     }
 
     @ScalarFunction

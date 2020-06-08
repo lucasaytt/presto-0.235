@@ -245,4 +245,10 @@ public class FunctionType
     {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public int cost()
+    {
+        throw new UnsupportedOperationException();
+    }
 }

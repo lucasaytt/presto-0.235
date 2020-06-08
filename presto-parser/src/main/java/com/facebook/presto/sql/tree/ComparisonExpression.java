@@ -25,8 +25,8 @@ public class ComparisonExpression
         extends Expression
 {
     private final Operator operator;
-    private final Expression left;
-    private final Expression right;
+    private Expression left;
+    private Expression right;
 
     public ComparisonExpression(Operator operator, Expression left, Expression right)
     {
@@ -97,6 +97,16 @@ public class ComparisonExpression
     public int hashCode()
     {
         return Objects.hash(operator, left, right);
+    }
+
+    public void setLeft(Expression left)
+    {
+        this.left = left;
+    }
+
+    public void setRight(Expression right)
+    {
+        this.right = right;
     }
 
     public enum Operator

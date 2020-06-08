@@ -208,4 +208,31 @@ public abstract class AbstractType
     {
         return signature.hashCode();
     }
+
+    static int cost(Type type)
+    {
+        if (type instanceof  BooleanType)
+        {
+            return 1;
+        }
+        else if (type instanceof  BigintType || type instanceof IntegerType)
+        {
+            return 2;
+        }
+        else if (type instanceof  DoubleType)
+        {
+            return 3;
+        }
+        else if (type instanceof  VarcharType)
+        {
+            return 4;
+        }
+        throw new IllegalArgumentException("Can't find Type: " + type);
+    }
+
+    @Override
+    public int cost()
+    {
+        return cost(this);
+    }
 }

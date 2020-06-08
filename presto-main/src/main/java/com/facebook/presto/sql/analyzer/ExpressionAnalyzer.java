@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.analyzer;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.warnings.WarningCollector;
 import com.facebook.presto.metadata.FunctionManager;
@@ -27,15 +28,7 @@ import com.facebook.presto.spi.function.FunctionHandle;
 import com.facebook.presto.spi.function.FunctionMetadata;
 import com.facebook.presto.spi.function.OperatorType;
 import com.facebook.presto.spi.function.SqlFunctionProperties;
-import com.facebook.presto.spi.type.CharType;
-import com.facebook.presto.spi.type.DecimalParseResult;
-import com.facebook.presto.spi.type.Decimals;
-import com.facebook.presto.spi.type.FunctionType;
-import com.facebook.presto.spi.type.RowType;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.spi.type.TypeSignatureParameter;
-import com.facebook.presto.spi.type.VarcharType;
+import com.facebook.presto.spi.type.*;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
@@ -169,6 +162,8 @@ import static java.util.Objects.requireNonNull;
 
 public class ExpressionAnalyzer
 {
+    private final static Logger LOGGER = Logger.get(ExpressionAnalyzer.class);
+
     private static final int MAX_NUMBER_GROUPING_ARGUMENTS_BIGINT = 63;
     private static final int MAX_NUMBER_GROUPING_ARGUMENTS_INTEGER = 31;
 
@@ -227,6 +222,115 @@ public class ExpressionAnalyzer
     public Map<NodeRef<Expression>, Type> getExpressionTypes()
     {
         return unmodifiableMap(expressionTypes);
+    }
+
+    public static  boolean is_NUMERIC_GROUP(Type type)
+    {
+        if(type instanceof IntegerType
+                || type instanceof BigintType
+                || type instanceof DoubleType
+                || type instanceof RealType //double
+                || type instanceof DecimalType)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    public static  boolean is_STRING_GROUP(Type type)
+    {
+        if(type instanceof VarcharType
+                || type instanceof CharType)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    public final static Map<Type,Integer> typeConvertible = new LinkedHashMap<>();
+    static
+    {
+        typeConvertible.put(IntegerType.INTEGER,1);
+        typeConvertible.put(BigintType.BIGINT,2);
+        typeConvertible.put(RealType.REAL,3);
+        typeConvertible.put(DoubleType.DOUBLE,4);
+        typeConvertible.put(VarcharType.VARCHAR,5);
+    }
+
+    public static boolean implicitConvertible(Type from, Type to)
+    {
+        if (from.equals(to))
+        {
+            return true;
+        }
+
+        if (is_STRING_GROUP(from) && to instanceof DoubleType)
+        {
+            return true;
+        }
+
+        if (is_STRING_GROUP(from) && to instanceof DecimalType)
+        {
+            return true;
+        }
+
+        if (from instanceof DateType && is_STRING_GROUP(to))
+        {
+            return true;
+        }
+
+        if (is_NUMERIC_GROUP(from) && is_STRING_GROUP(to))
+        {
+            return true;
+        }
+        if (is_STRING_GROUP(from) && is_STRING_GROUP(to))
+        {
+            return true;
+        }
+
+        Integer a  = typeConvertible.get(from);
+        Integer b = typeConvertible.get(to);
+        if (a !=null && b!=null)
+        {
+            if (a.intValue() < b.intValue())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static Type getCommonType(Type type1, Type type2)
+    {
+        if(type1 instanceof BooleanType && type2 instanceof VarcharType)
+        {
+            return type1;
+        }
+        if(type2 instanceof BooleanType && type1 instanceof VarcharType)
+        {
+            return type2;
+        }
+
+        if(type1 instanceof DateType && type2 instanceof VarcharType)
+        {
+            return type1;
+        }
+        if(type2 instanceof DateType && type1 instanceof VarcharType)
+        {
+            return type2;
+        }
+        if((is_NUMERIC_GROUP(type1)||is_NUMERIC_GROUP(type2)) && (type1 instanceof TimestampType || type2 instanceof TimestampType))
+        {
+            return DoubleType.DOUBLE;
+        }
+
+        for(Type to : typeConvertible.keySet()){
+            if(implicitConvertible(type1,to) && implicitConvertible(type2,to)){
+                return to;
+            }
+        }
+        return null;
     }
 
     public Type setExpressionType(Expression expression, Type type)
@@ -491,7 +595,47 @@ public class ExpressionAnalyzer
         protected Type visitComparisonExpression(ComparisonExpression node, StackableAstVisitorContext<Context> context)
         {
             OperatorType operatorType = OperatorType.valueOf(node.getOperator().name());
-            return getOperator(context, node, operatorType, node.getLeft(), node.getRight());
+//            return getOperator(context, node, operatorType, node.getLeft(), node.getRight());
+            Type type = null;
+            try
+            {
+                type =  getOperator(context, node, operatorType, node.getLeft(), node.getRight());
+            }
+            catch (SemanticException e)
+            {
+                try
+                {
+                    Type left = process(node.getLeft(), context);
+                    Type right = process(node.getRight(), context);
+                    Type commonType = getCommonType(left,right);
+                    if (commonType == null)
+                    {
+                        throw e;
+                    }
+                    LOGGER.info("最终需要转换的类型" + commonType.getClass() + "left=" + left.getClass() +  " right=" + right.getClass() );
+                    if (!commonType.getClass().equals(left.getClass()))
+                    {
+                        Cast cast = new Cast(node.getLeft(), commonType.getDisplayName());
+                        node.setLeft(cast);
+                        process(cast, context);
+                    }
+
+                    if (!commonType.getClass().equals(right.getClass()))
+                    {
+                        Cast cast = new Cast(node.getRight(), commonType.getDisplayName());
+                        node.setRight(cast);
+                        process(cast, context);
+                    }
+                    return setExpressionType(node, BOOLEAN);
+                }
+                catch (Exception e2)
+                {
+                    e2.printStackTrace();
+                    throw e;
+                }
+            }
+
+            return type;
         }
 
         @Override
@@ -1055,20 +1199,64 @@ public class ExpressionAnalyzer
         protected Type visitInPredicate(InPredicate node, StackableAstVisitorContext<Context> context)
         {
             Expression value = node.getValue();
-            process(value, context);
+            Type t1 = process(value, context);
 
             Expression valueList = node.getValueList();
-            process(valueList, context);
+            Type t2 = process(valueList, context);
 
             if (valueList instanceof InListExpression) {
                 InListExpression inListExpression = (InListExpression) valueList;
 
-                coerceToSingleType(context,
-                        "IN value and list items must be the same type: %s",
-                        ImmutableList.<Expression>builder().add(value).addAll(inListExpression.getValues()).build());
+//                coerceToSingleType(context,
+//                        "IN value and list items must be the same type: %s",
+//                        ImmutableList.<Expression>builder().add(value).addAll(inListExpression.getValues()).build());
+                try
+                {
+                    coerceToSingleType(context,
+                            "IN value and list items must be the same type: %s",
+                            ImmutableList.<Expression>builder().add(value).addAll(inListExpression.getValues()).build());
+                }catch (SemanticException e)
+                {
+                    try
+                    {
+                        Type type = getCommonType(t1,t2);
+                        if (type == null)
+                        {
+                            throw e;
+                        }
+                        Cast cast = new Cast(value, t2.getDisplayName());
+                        node.setValue(cast);
+                        process(cast,context);
+                        return setExpressionType(node, BOOLEAN);
+                    }catch (Exception ex)
+                    {
+                        throw e;
+                    }
+                }
             }
             else if (valueList instanceof SubqueryExpression) {
-                coerceToSingleType(context, node, "value and result of subquery must be of the same type for IN expression: %s vs %s", value, valueList);
+//                coerceToSingleType(context, node, "value and result of subquery must be of the same type for IN expression: %s vs %s", value, valueList);
+                try
+                {
+                    coerceToSingleType(context, node, "value and result of subquery must be of the same type for IN expression: %s vs %s", value, valueList);
+                }catch (SemanticException e)
+                {
+                    try
+                    {
+                        Type type = getCommonType(t1,t2);
+                        if (type == null)
+                        {
+                            throw e;
+                        }
+                        Cast cast = new Cast(value, t2.getDisplayName());
+                        node.setValue(cast);
+                        process(cast,context);
+                        return setExpressionType(node, BOOLEAN);
+                    }catch (Exception ex)
+                    {
+                        throw e;
+                    }
+                }
             }
 
             return setExpressionType(node, BOOLEAN);
