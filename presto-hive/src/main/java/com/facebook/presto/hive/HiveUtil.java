@@ -620,7 +620,7 @@ public final class HiveUtil
     }
 
     public static boolean isHiveView(Table table) {
-        return table.getTableType().equals(PrestoTableType.VIRTUAL_VIEW.name());
+        return table.getTableType().name().equals(PrestoTableType.VIRTUAL_VIEW.name());
     }
 
     public static String decodeViewData(String data)
