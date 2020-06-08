@@ -80,7 +80,8 @@ public class TestSetRoleTask
                 new TablePropertyManager(),
                 new ColumnPropertyManager(),
                 new AnalyzePropertyManager(),
-                transactionManager);
+                transactionManager,
+                accessControl);
 
         catalogManager.registerCatalog(createBogusTestingCatalog(CATALOG_NAME));
         executor = newCachedThreadPool(daemonThreadsNamed("test-set-role-task-executor-%s"));
