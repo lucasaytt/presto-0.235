@@ -104,6 +104,7 @@ public final class BigintOperators
 
     @ScalarOperator(DIVIDE)
     @SqlType(StandardTypes.DOUBLE)
+    @SqlNullable
     public static Double divide(@SqlType(StandardTypes.BIGINT) long left, @SqlType(StandardTypes.BIGINT) long right)
     {
         try {

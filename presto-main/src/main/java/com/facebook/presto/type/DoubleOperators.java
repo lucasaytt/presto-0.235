@@ -101,6 +101,7 @@ public final class DoubleOperators
 
     @ScalarOperator(DIVIDE)
     @SqlType(StandardTypes.DOUBLE)
+    @SqlNullable
     public static Double divide(@SqlType(StandardTypes.DOUBLE) double left, @SqlType(StandardTypes.DOUBLE) double right)
     {
         try {
