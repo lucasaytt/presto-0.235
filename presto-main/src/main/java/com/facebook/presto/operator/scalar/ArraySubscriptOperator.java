@@ -93,7 +93,8 @@ public class ArraySubscriptOperator
     public static Long longSubscript(Type elementType, Block array, long index)
     {
         checkIndex(array, index);
-        int position = toIntExact(index - 1);
+//        int position = toIntExact(index - 1);
+        int position = toIntExact(index);
         if (array.isNull(position)) {
             return null;
         }
@@ -105,7 +106,8 @@ public class ArraySubscriptOperator
     public static Boolean booleanSubscript(Type elementType, Block array, long index)
     {
         checkIndex(array, index);
-        int position = toIntExact(index - 1);
+//        int position = toIntExact(index - 1);
+        int position = toIntExact(index);
         if (array.isNull(position)) {
             return null;
         }
@@ -117,7 +119,8 @@ public class ArraySubscriptOperator
     public static Double doubleSubscript(Type elementType, Block array, long index)
     {
         checkIndex(array, index);
-        int position = toIntExact(index - 1);
+//        int position = toIntExact(index - 1);
+        int position = toIntExact(index);
         if (array.isNull(position)) {
             return null;
         }
@@ -129,7 +132,8 @@ public class ArraySubscriptOperator
     public static Slice sliceSubscript(Type elementType, Block array, long index)
     {
         checkIndex(array, index);
-        int position = toIntExact(index - 1);
+//        int position = toIntExact(index - 1);
+        int position = toIntExact(index);
         if (array.isNull(position)) {
             return null;
         }
@@ -141,7 +145,8 @@ public class ArraySubscriptOperator
     public static Object objectSubscript(Type elementType, Block array, long index)
     {
         checkIndex(array, index);
-        int position = toIntExact(index - 1);
+//        int position = toIntExact(index - 1);
+        int position = toIntExact(index);
         if (array.isNull(position)) {
             return null;
         }
@@ -151,9 +156,9 @@ public class ArraySubscriptOperator
 
     public static void checkArrayIndex(long index)
     {
-        if (index == 0) {
-            throw new PrestoException(INVALID_FUNCTION_ARGUMENT, "SQL array indices start at 1");
-        }
+//        if (index == 0) {
+//            throw new PrestoException(INVALID_FUNCTION_ARGUMENT, "SQL array indices start at 1");
+//        }
         if (index < 0) {
             throw new PrestoException(INVALID_FUNCTION_ARGUMENT, "Array subscript is negative");
         }
@@ -162,7 +167,8 @@ public class ArraySubscriptOperator
     public static void checkIndex(Block array, long index)
     {
         checkArrayIndex(index);
-        if (index > array.getPositionCount()) {
+//        if (index > array.getPositionCount()) {
+        if (index > array.getPositionCount() - 1) {
             throw new PrestoException(INVALID_FUNCTION_ARGUMENT, "Array subscript out of bounds");
         }
     }

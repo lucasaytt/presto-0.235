@@ -88,7 +88,7 @@ public class DesugarRowSubscriptRewriter
             Type type = getType(base);
             if (type instanceof RowType) {
                 RowType rowType = (RowType) type;
-                int position = toIntExact(((LongLiteral) index).getValue() - 1);
+                int position = toIntExact(((LongLiteral) index).getValue());
 
                 Optional<String> fieldName = rowType.getFields().get(position).getName();
 

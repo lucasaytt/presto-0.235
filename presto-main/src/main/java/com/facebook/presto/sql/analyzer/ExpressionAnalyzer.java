@@ -671,11 +671,12 @@ public class ExpressionAnalyzer
                             "Subscript expression on ROW requires integer index, found %s", indexType);
                 }
                 int indexValue = toIntExact(((LongLiteral) node.getIndex()).getValue());
-                if (indexValue <= 0) {
+//                if (indexValue <= 0) {
+                if (indexValue <= -1) {
                     throw new SemanticException(
                             INVALID_PARAMETER_USAGE,
                             node.getIndex(),
-                            "Invalid subscript index: %s. ROW indices start at 1", indexValue);
+                            "Invalid subscript index: %s. ROW indices start at 0", indexValue);
                 }
                 List<Type> rowTypes = baseType.getTypeParameters();
                 if (indexValue > rowTypes.size()) {
@@ -684,7 +685,8 @@ public class ExpressionAnalyzer
                             node.getIndex(),
                             "Subscript index out of bounds: %s, max value is %s", indexValue, rowTypes.size());
                 }
-                return setExpressionType(node, rowTypes.get(indexValue - 1));
+//                return setExpressionType(node, rowTypes.get(indexValue - 1));
+                return setExpressionType(node, rowTypes.get(indexValue));
             }
             return getOperator(context, node, SUBSCRIPT, node.getBase(), node.getIndex());
         }
