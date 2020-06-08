@@ -231,6 +231,11 @@ class UnimplementedHiveMetastore
     }
 
     @Override
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName) {
+        return null;
+    }
+
+    @Override
     public void grantRoles(Set<String> roles, Set<PrestoPrincipal> grantees, boolean withAdminOption, PrestoPrincipal grantor)
     {
         throw new UnsupportedOperationException();

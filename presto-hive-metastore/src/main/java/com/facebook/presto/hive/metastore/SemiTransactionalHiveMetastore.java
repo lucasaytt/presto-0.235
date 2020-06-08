@@ -820,6 +820,12 @@ public class SemiTransactionalHiveMetastore
         return delegate.listRoles();
     }
 
+    public synchronized Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName)
+    {
+        checkReadable();
+        return delegate.getDatabasePrivileges(user, databaseName);
+    }
+
     public synchronized void grantRoles(Set<String> roles, Set<PrestoPrincipal> grantees, boolean withAdminOption, PrestoPrincipal grantor)
     {
         setExclusive((delegate, hdfsEnvironment) -> delegate.grantRoles(roles, grantees, withAdminOption, grantor));

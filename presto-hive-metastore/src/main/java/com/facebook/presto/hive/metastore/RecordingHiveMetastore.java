@@ -395,6 +395,11 @@ public class RecordingHiveMetastore
     }
 
     @Override
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName) {
+        return null;
+    }
+
+    @Override
     public void grantTablePrivileges(String databaseName, String tableName, PrestoPrincipal grantee, Set<HivePrivilegeInfo> privileges)
     {
         verifyRecordingMode();

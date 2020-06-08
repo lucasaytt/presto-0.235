@@ -430,4 +430,9 @@ public class AlluxioHiveMetastore
     {
         throw new UnsupportedOperationException("listTablePrivileges is not supported in AlluxioHiveMetastore");
     }
+
+    @Override
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName) {
+        return null;
+    }
 }

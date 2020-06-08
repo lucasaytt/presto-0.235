@@ -951,6 +951,11 @@ public class FileHiveMetastore
     }
 
     @Override
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName) {
+        return null;
+    }
+
+    @Override
     public synchronized void grantTablePrivileges(String databaseName, String tableName, PrestoPrincipal grantee, Set<HivePrivilegeInfo> privileges)
     {
         setTablePrivileges(grantee, databaseName, tableName, privileges);

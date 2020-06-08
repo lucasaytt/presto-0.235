@@ -78,6 +78,7 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.hive.HiveBasicStatistics.createEmptyStatistics;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_METASTORE_ERROR;
+import static com.facebook.presto.hive.metastore.Database.DEFAULT_DATABASE_NAME;
 import static com.facebook.presto.hive.metastore.HivePrivilegeInfo.HivePrivilege;
 import static com.facebook.presto.hive.metastore.HivePrivilegeInfo.HivePrivilege.OWNERSHIP;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.PRESTO_VIEW_FLAG;
@@ -105,6 +106,7 @@ import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toSet;
 import static org.apache.hadoop.hive.common.FileUtils.makePartName;
+import static org.apache.hadoop.hive.metastore.api.HiveObjectType.DATABASE;
 import static org.apache.hadoop.hive.metastore.api.HiveObjectType.TABLE;
 //import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.HIVE_FILTER_FIELD_PARAMS;
 
@@ -1249,6 +1251,84 @@ public class ThriftHiveMetastore
                             metastoreClient.revokePrivileges(buildPrivilegeBag(databaseName, tableName, grantee, privilegesToRevoke));
                         }
                         return null;
+                    }));
+        }
+        catch (TException e) {
+            throw new PrestoException(HIVE_METASTORE_ERROR, e);
+        }
+        catch (Exception e) {
+            throw propagate(e);
+        }
+    }
+
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName)
+    {
+        ImmutableSet.Builder<HivePrivilegeInfo> privileges = ImmutableSet.builder();
+
+        if (isDatabaseOwner(user, databaseName)) {
+            privileges.add(new HivePrivilegeInfo(OWNERSHIP, true,new PrestoPrincipal(USER,user),new PrestoPrincipal(USER,user)));
+        }
+        privileges.addAll(getUserPrivileges(new PrestoPrincipal(USER,user), new HiveObjectRef(DATABASE, databaseName, null, null, null)));
+
+        return privileges.build();
+    }
+
+    public boolean isDatabaseOwner(String user, String databaseName)
+    {
+        // all users are "owners" of the default database
+        if (DEFAULT_DATABASE_NAME.equalsIgnoreCase(databaseName)) {
+            return true;
+        }
+
+        Optional<Database> databaseMetadata = getDatabase(databaseName);
+        if (!databaseMetadata.isPresent()) {
+            return false;
+        }
+
+        Database database = databaseMetadata.get();
+
+        // a database can be owned by a user or role
+        if (database.getOwnerType() == PrincipalType.USER && user.equals(database.getOwnerName())) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Set<HivePrivilegeInfo> getUserPrivileges(PrestoPrincipal prestoPrincipal, HiveObjectRef objectReference)
+    {
+        checkArgument(prestoPrincipal.getType() == USER, "Expected USER PrincipalType but found ROLE");
+
+        try {
+            return retry()
+                    .stopOnIllegalExceptions()
+                    .run("getPrivilegeSet", stats.getListPrivileges().wrap(() -> {
+                        try (HiveMetastoreClient client = clientProvider.createMetastoreClient()) {
+                            ImmutableSet.Builder<HivePrivilegeInfo> privileges = ImmutableSet.builder();
+
+                            String principalName = prestoPrincipal.getName();
+                            com.facebook.presto.spi.security.PrincipalType principalTpe = prestoPrincipal.getType();
+                            List<HiveObjectPrivilege> privilegeSet = client.listPrivileges(principalName,fromPrestoPrincipalType(principalTpe),objectReference);
+                            if (privilegeSet != null) {
+//                                Map<String, List<PrivilegeGrantInfo>> userPrivileges = privilegeSet.getUserPrivileges();
+//                                if (userPrivileges != null) {
+//                                    privileges.addAll(toGrants(userPrivileges.get(principalName)));
+//                                }
+//                                Map<String, List<PrivilegeGrantInfo>> rolePrivilegesMap = privilegeSet.getRolePrivileges();
+//                                if (rolePrivilegesMap != null) {
+//                                    for (List<PrivilegeGrantInfo> rolePrivileges : rolePrivilegesMap.values()) {
+//                                        privileges.addAll(toGrants(rolePrivileges));
+//                                    }
+//                                }
+                                for (HiveObjectPrivilege hiveObjectPrivilege : privilegeSet) {
+                                    PrestoPrincipal grantee = new PrestoPrincipal(fromMetastoreApiPrincipalType(hiveObjectPrivilege.getPrincipalType()), hiveObjectPrivilege.getPrincipalName());
+                                    privileges.addAll(parsePrivilege(hiveObjectPrivilege.getGrantInfo(), Optional.of(grantee)));
+                                }
+                                // We do not add the group permissions as Hive does not seem to process these
+                            }
+
+                            return privileges.build();
+                        }
                     }));
         }
         catch (TException e) {

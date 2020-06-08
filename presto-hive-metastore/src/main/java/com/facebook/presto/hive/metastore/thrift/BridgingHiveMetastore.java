@@ -353,4 +353,9 @@ public class BridgingHiveMetastore
     {
         return delegate.listTablePrivileges(databaseName, tableName, principal);
     }
+
+    @Override
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName) {
+        return ((ThriftHiveMetastore)delegate).getDatabasePrivileges(user,databaseName);
+    }
 }

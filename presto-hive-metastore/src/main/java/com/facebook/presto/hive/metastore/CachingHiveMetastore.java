@@ -84,6 +84,7 @@ public class CachingHiveMetastore
     private final LoadingCache<PartitionFilter, List<String>> partitionFilterCache;
     private final LoadingCache<HiveTableName, Optional<List<String>>> partitionNamesCache;
     private final LoadingCache<UserTableKey, Set<HivePrivilegeInfo>> tablePrivilegesCache;
+    private final LoadingCache<UserDatabaseKey, Set<HivePrivilegeInfo>> userDataBasePrivileges;
     private final LoadingCache<String, Set<String>> rolesCache;
     private final LoadingCache<PrestoPrincipal, Set<RoleGrant>> roleGrantsCache;
     private boolean cacheTempDatabaseTableEnabled;
@@ -196,6 +197,11 @@ public class CachingHiveMetastore
 
         roleGrantsCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
                 .build(asyncReloading(CacheLoader.from(this::loadRoleGrants), executor));
+
+        userDataBasePrivileges = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+                .build(asyncReloading(CacheLoader.from(key -> {
+                    return loadDataBasePrivileges(key.getUser(), key.getDatabase());
+                }), executor));
     }
 
     @Managed
@@ -286,6 +292,17 @@ public class CachingHiveMetastore
     private Optional<Table> loadTable(HiveTableName hiveTableName)
     {
         return delegate.getTable(hiveTableName.getDatabaseName(), hiveTableName.getTableName());
+    }
+
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName)
+    {
+        //return delegate.getDatabasePrivileges(user, databaseName);
+        return get(userDataBasePrivileges, new UserDatabaseKey(user, databaseName));
+    }
+
+    private Set<HivePrivilegeInfo> loadDataBasePrivileges(String user, String databaseName)
+    {
+        return delegate.getDatabasePrivileges(user, databaseName);
     }
 
     @Override

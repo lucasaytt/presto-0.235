@@ -950,4 +950,9 @@ public class GlueHiveMetastore
     {
         throw new PrestoException(NOT_SUPPORTED, "listTablePrivileges is not supported by Glue");
     }
+
+    @Override
+    public Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName) {
+        return null;
+    }
 }

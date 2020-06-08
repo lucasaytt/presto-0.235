@@ -107,4 +107,6 @@ public interface ExtendedHiveMetastore
     void revokeTablePrivileges(String databaseName, String tableName, PrestoPrincipal grantee, Set<HivePrivilegeInfo> privileges);
 
     Set<HivePrivilegeInfo> listTablePrivileges(String databaseName, String tableName, PrestoPrincipal principal);
+
+    Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName);
 }

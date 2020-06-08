@@ -13,10 +13,12 @@
  */
 package com.facebook.presto.hive.security;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.hive.HiveConnectorId;
 import com.facebook.presto.hive.HiveTransactionManager;
 import com.facebook.presto.hive.TransactionalMetadata;
 import com.facebook.presto.hive.metastore.Database;
+import com.facebook.presto.hive.metastore.HivePrivilegeInfo;
 import com.facebook.presto.hive.metastore.SemiTransactionalHiveMetastore;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.connector.ConnectorAccessControl;
@@ -27,11 +29,15 @@ import com.facebook.presto.spi.security.ConnectorIdentity;
 import com.facebook.presto.spi.security.PrestoPrincipal;
 import com.facebook.presto.spi.security.Privilege;
 import com.facebook.presto.spi.security.RoleGrant;
+import com.google.common.collect.ImmutableSet;
 
 import javax.inject.Inject;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.hive.metastore.Database.DEFAULT_DATABASE_NAME;
 import static com.facebook.presto.hive.metastore.HivePrivilegeInfo.HivePrivilege;
@@ -77,6 +83,7 @@ import static java.util.stream.Collectors.toSet;
 public class SqlStandardAccessControl
         implements ConnectorAccessControl
 {
+    public static final Logger LOG = Logger.get(SqlStandardAccessControl.class);
     public static final String ADMIN_ROLE_NAME = "admin";
     private static final String INFORMATION_SCHEMA_NAME = "information_schema";
     private static final SchemaTableName ROLES = new SchemaTableName(INFORMATION_SCHEMA_NAME, "roles");
@@ -402,9 +409,26 @@ public class SqlStandardAccessControl
         }
 
         SemiTransactionalHiveMetastore metastore = getMetastore(transaction);
-        return listEnabledTablePrivileges(metastore, tableName.getSchemaName(), tableName.getTableName(), identity)
-                .filter(privilegeInfo -> !grantOptionRequired || privilegeInfo.isGrantOption())
-                .anyMatch(privilegeInfo -> privilegeInfo.getHivePrivilege().equals(requiredPrivilege));
+        Set<HivePrivilege> databasePrivilegeSet = metastore.getDatabasePrivileges(identity.getUser(), tableName.getSchemaName()).stream()
+                .map(HivePrivilegeInfo::getHivePrivilege)
+                .collect(Collectors.toSet());
+
+        List<HivePrivilege> privilege_list = new ArrayList<>();
+        privilege_list.add(requiredPrivilege);
+        ImmutableSet.Builder<HivePrivilege> privileges = ImmutableSet.builder();
+        ImmutableSet<HivePrivilege> privilegeSet = privileges.addAll(databasePrivilegeSet).build();
+        if(privilegeSet.containsAll(ImmutableSet.copyOf(privilege_list))){
+            LOG.info("cootek-database鉴权 用户:%s 拥有的权限:%s 需要的权限:%s 操作的表:%s.%s", identity, databasePrivilegeSet, requiredPrivilege.name(), tableName.getSchemaName(), tableName.getTableName());
+            return true;
+        } else {
+            Set<HivePrivilege> tablePrivilegeSet = listEnabledTablePrivileges(metastore, tableName.getSchemaName(), tableName.getTableName(), identity)
+                    .filter(privilegeInfo -> !grantOptionRequired || privilegeInfo.isGrantOption())
+                    .map(HivePrivilegeInfo::getHivePrivilege).collect(Collectors.toSet());
+            ImmutableSet.Builder<HivePrivilege> tablePrivileges = ImmutableSet.builder();
+            ImmutableSet<HivePrivilege> table_privilegeSet = tablePrivileges.addAll(databasePrivilegeSet).addAll(tablePrivilegeSet).build();
+            LOG.info("cootek-table鉴权 用户:%s 拥有的权限:%s 需要的权限:%s 操作的表:%s.%s", identity, table_privilegeSet, requiredPrivilege.name(), tableName.getSchemaName(), tableName.getTableName());
+            return table_privilegeSet.containsAll(privilege_list);
+        }
     }
 
     private boolean hasGrantOptionForPrivilege(ConnectorTransactionHandle transaction, ConnectorIdentity identity, Privilege privilege, SchemaTableName tableName)
