@@ -1798,7 +1798,7 @@ public class HiveMetadata
 //                throw new ViewAlreadyExistsException(viewName);
 //            }
 
-            if (!replace || !HiveUtil.isPrestoView(existing.get())
+            if (!replace || !MetastoreUtil.isPrestoView(existing.get())
                     || !HiveUtil.isHiveView(existing.get())) {
                 throw new ViewAlreadyExistsException(viewName);
             }
@@ -1863,10 +1863,10 @@ public class HiveMetadata
 //                        Optional.ofNullable(table.get().getOwner()),
 //                        decodeViewData(table.get().getViewOriginalText().get())));
             if (table.isPresent()
-                    && (HiveUtil.isPrestoView(table.get())
+                    && (MetastoreUtil.isPrestoView(table.get())
                     || HiveUtil.isHiveView(table.get()))) {
                 ConnectorViewDefinition viewDefn;
-                if (HiveUtil.isPrestoView(table.get())) {
+                if (MetastoreUtil.isPrestoView(table.get())) {
                     String viewData = table.get().getViewOriginalText().get();
                     viewDefn = new ConnectorViewDefinition(schemaTableName,
                             Optional.ofNullable(table.get().getOwner()), decodeViewData(viewData));
