@@ -101,13 +101,18 @@ public final class DoubleOperators
 
     @ScalarOperator(DIVIDE)
     @SqlType(StandardTypes.DOUBLE)
-    public static double divide(@SqlType(StandardTypes.DOUBLE) double left, @SqlType(StandardTypes.DOUBLE) double right)
+    public static Double divide(@SqlType(StandardTypes.DOUBLE) double left, @SqlType(StandardTypes.DOUBLE) double right)
     {
         try {
+            if(right==0)
+            {
+                return null;
+            }
             return left / right;
         }
         catch (ArithmeticException e) {
-            throw new PrestoException(DIVISION_BY_ZERO, e);
+            return null;
+//            throw new PrestoException(DIVISION_BY_ZERO, e);
         }
     }
 

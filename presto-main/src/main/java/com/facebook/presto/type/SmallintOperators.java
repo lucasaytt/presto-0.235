@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.type;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.function.BlockIndex;
@@ -57,6 +58,8 @@ import static java.lang.String.format;
 
 public final class SmallintOperators
 {
+    private static final Logger LOGGER = Logger.get(SmallintOperators.class);
+
     private SmallintOperators()
     {
     }
@@ -98,14 +101,21 @@ public final class SmallintOperators
     }
 
     @ScalarOperator(DIVIDE)
-    @SqlType(StandardTypes.SMALLINT)
-    public static long divide(@SqlType(StandardTypes.SMALLINT) long left, @SqlType(StandardTypes.SMALLINT) long right)
+    @SqlType(StandardTypes.DOUBLE)
+    @SqlNullable
+    public static Double divide(@SqlType(StandardTypes.SMALLINT) long left, @SqlType(StandardTypes.SMALLINT) long right)
     {
         try {
-            return left / right;
+            if(right==0)
+            {
+                return null;
+            }
+            return (double)left / (double)right;
         }
         catch (ArithmeticException e) {
-            throw new PrestoException(DIVISION_BY_ZERO, e);
+            LOGGER.warn("divide error",e);
+            return null;
+            //throw new PrestoException(DIVISION_BY_ZERO, e);
         }
     }
 

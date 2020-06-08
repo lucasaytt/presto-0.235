@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.type;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.operator.scalar.MathFunctions;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
@@ -61,6 +62,8 @@ import static java.math.RoundingMode.FLOOR;
 
 public final class RealOperators
 {
+    private static final Logger LOGGER = Logger.get(RealOperators.class);
+
     private static final float MIN_LONG_AS_FLOAT = -0x1p63f;
     private static final float MAX_LONG_PLUS_ONE_AS_FLOAT = 0x1p63f;
     private static final float MIN_INTEGER_AS_FLOAT = -0x1p31f;
@@ -96,10 +99,24 @@ public final class RealOperators
     }
 
     @ScalarOperator(DIVIDE)
-    @SqlType(StandardTypes.REAL)
-    public static long divide(@SqlType(StandardTypes.REAL) long left, @SqlType(StandardTypes.REAL) long right)
+    @SqlType(StandardTypes.DOUBLE)
+    @SqlNullable
+    public static Double divide(@SqlType(StandardTypes.REAL) long left, @SqlType(StandardTypes.REAL) long right)
     {
-        return floatToRawIntBits(intBitsToFloat((int) left) / intBitsToFloat((int) right));
+        //return floatToRawIntBits(intBitsToFloat((int) left) / intBitsToFloat((int) right));
+        try
+        {
+            if(right==0)
+            {
+                return null;
+            }
+            return (double)intBitsToFloat((int) left) / (double)intBitsToFloat((int) right);
+        }
+        catch (Exception e)
+        {
+            LOGGER.warn("divide error",e);
+            return null;
+        }
     }
 
     @ScalarOperator(MODULUS)
