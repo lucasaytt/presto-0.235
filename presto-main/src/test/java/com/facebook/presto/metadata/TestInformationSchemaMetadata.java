@@ -20,6 +20,8 @@ import com.facebook.presto.connector.informationSchema.InformationSchemaColumnHa
 import com.facebook.presto.connector.informationSchema.InformationSchemaMetadata;
 import com.facebook.presto.connector.informationSchema.InformationSchemaTableHandle;
 import com.facebook.presto.connector.informationSchema.InformationSchemaTableLayoutHandle;
+import com.facebook.presto.security.AccessControl;
+import com.facebook.presto.security.AllowAllAccessControl;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.ConnectorSession;
@@ -61,6 +63,7 @@ public class TestInformationSchemaMetadata
 
     private final TransactionManager transactionManager;
     private final Metadata metadata;
+    private AccessControl accessControl;
 
     public TestInformationSchemaMetadata()
     {
@@ -88,6 +91,7 @@ public class TestInformationSchemaMetadata
                 createSystemTablesConnectorId(connectorId),
                 testConnector));
         transactionManager = createTestTransactionManager(catalogManager);
+        accessControl = new AllowAllAccessControl();
         metadata = new MetadataManager(
                 new FeaturesConfig(),
                 new TypeRegistry(),
@@ -97,7 +101,8 @@ public class TestInformationSchemaMetadata
                 new TablePropertyManager(),
                 new ColumnPropertyManager(),
                 new AnalyzePropertyManager(),
-                transactionManager);
+                transactionManager,
+                accessControl);
     }
 
     /**
