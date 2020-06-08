@@ -265,6 +265,10 @@ public class CachingHiveMetastore
     {
         Optional<Table> table = get(tableCache, hiveTableName(databaseName, tableName));
 
+        if(!table.isPresent()){
+            invalidateTable(databaseName, tableName);
+        }
+
         //如果不需要cache 含有temp库的表,直接跳过
         if(!cacheTempDatabaseTableEnabled && databaseName.contains("temp")){
             invalidateTable(databaseName, tableName);
