@@ -106,7 +106,7 @@ import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toSet;
 import static org.apache.hadoop.hive.common.FileUtils.makePartName;
 import static org.apache.hadoop.hive.metastore.api.HiveObjectType.TABLE;
-import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.HIVE_FILTER_FIELD_PARAMS;
+//import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.HIVE_FILTER_FIELD_PARAMS;
 
 @ThreadSafe
 public class ThriftHiveMetastore
@@ -230,9 +230,9 @@ public class ThriftHiveMetastore
                     .run("getTable", stats.getGetTable().wrap(() -> {
                         try (HiveMetastoreClient client = clientProvider.createMetastoreClient()) {
                             Table table = client.getTable(databaseName, tableName);
-                            if (table.getTableType().equals(TableType.VIRTUAL_VIEW.name()) && !isPrestoView(table)) {
-                                throw new HiveViewNotSupportedException(new SchemaTableName(databaseName, tableName));
-                            }
+//                            if (table.getTableType().equals(TableType.VIRTUAL_VIEW.name()) && !isPrestoView(table)) {
+//                                throw new HiveViewNotSupportedException(new SchemaTableName(databaseName, tableName));
+//                            }
                             return Optional.of(table);
                         }
                     }));
@@ -724,8 +724,17 @@ public class ThriftHiveMetastore
                     .stopOnIllegalExceptions()
                     .run("getAllViews", stats.getGetAllViews().wrap(() -> {
                         try (HiveMetastoreClient client = clientProvider.createMetastoreClient()) {
-                            String filter = HIVE_FILTER_FIELD_PARAMS + PRESTO_VIEW_FLAG + " = \"true\"";
-                            return Optional.of(client.getTableNamesByFilter(databaseName, filter));
+//                            String filter = HIVE_FILTER_FIELD_PARAMS + PRESTO_VIEW_FLAG + " = \"true\"";
+//                            return Optional.of(client.getTableNamesByFilter(databaseName, filter));
+                            List<String> tableNames = client.getAllTables(databaseName);
+                            ImmutableList.Builder<String> view = ImmutableList.builder();
+                            for (String tableName : tableNames) {
+                                Table table = client.getTable(databaseName, tableName);
+                                if (table.getTableType().equals(TableType.VIRTUAL_VIEW.name()) || (isPrestoView(table))) {
+                                    view.add(table.getTableName());
+                                }
+                            }
+                            return Optional.of(view.build());
                         }
                     }));
         }

@@ -18,6 +18,8 @@ import com.facebook.airlift.json.JsonCodecFactory;
 import com.facebook.airlift.json.ObjectMapperProvider;
 import com.facebook.presto.Session;
 import com.facebook.presto.block.BlockEncodingManager;
+import com.facebook.presto.execution.warnings.WarningCollector;
+import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.CatalogSchemaName;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
@@ -58,9 +60,11 @@ import com.facebook.presto.spi.statistics.TableStatisticsMetadata;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
-import com.facebook.presto.sql.analyzer.FeaturesConfig;
-import com.facebook.presto.sql.analyzer.TypeSignatureProvider;
+import com.facebook.presto.sql.analyzer.*;
+import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.PartitioningHandle;
+import com.facebook.presto.sql.tree.Statement;
+import com.facebook.presto.testing.TestingAccessControlManager;
 import com.facebook.presto.transaction.TransactionManager;
 import com.facebook.presto.type.TypeDeserializer;
 import com.facebook.presto.type.TypeRegistry;
@@ -111,6 +115,7 @@ import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static com.facebook.presto.transaction.InMemoryTransactionManager.createTestTransactionManager;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
@@ -130,6 +135,7 @@ public class MetadataManager
     private final ColumnPropertyManager columnPropertyManager;
     private final AnalyzePropertyManager analyzePropertyManager;
     private final TransactionManager transactionManager;
+    private final AccessControl accessControl;
 
     private final ConcurrentMap<String, Collection<ConnectorMetadata>> catalogsByQueryId = new ConcurrentHashMap<>();
 
@@ -143,7 +149,8 @@ public class MetadataManager
             TablePropertyManager tablePropertyManager,
             ColumnPropertyManager columnPropertyManager,
             AnalyzePropertyManager analyzePropertyManager,
-            TransactionManager transactionManager)
+            TransactionManager transactionManager,
+            AccessControl accessControl)
     {
         this(typeManager,
                 createTestingViewCodec(),
@@ -154,7 +161,8 @@ public class MetadataManager
                 columnPropertyManager,
                 analyzePropertyManager,
                 transactionManager,
-                new FunctionManager(typeManager, transactionManager, blockEncodingSerde, featuresConfig, new HandleResolver()));
+                new FunctionManager(typeManager, transactionManager, blockEncodingSerde, featuresConfig, new HandleResolver()),
+                accessControl);
     }
 
     @Inject
@@ -168,7 +176,8 @@ public class MetadataManager
             ColumnPropertyManager columnPropertyManager,
             AnalyzePropertyManager analyzePropertyManager,
             TransactionManager transactionManager,
-            FunctionManager functionManager)
+            FunctionManager functionManager,
+            AccessControl accessControl)
     {
         procedures = new ProcedureRegistry(typeManager);
         this.typeManager = requireNonNull(typeManager, "types is null");
@@ -181,6 +190,7 @@ public class MetadataManager
         this.analyzePropertyManager = requireNonNull(analyzePropertyManager, "analyzePropertyManager is null");
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
         this.functions = requireNonNull(functionManager, "functionManager is null");
+        this.accessControl = accessControl;
 
         verifyComparableOrderableContract();
     }
@@ -217,7 +227,8 @@ public class MetadataManager
                 new TablePropertyManager(),
                 new ColumnPropertyManager(),
                 new AnalyzePropertyManager(),
-                transactionManager);
+                transactionManager,
+                new TestingAccessControlManager(transactionManager));
     }
 
     @Override
@@ -594,8 +605,18 @@ public class MetadataManager
                             entry.getKey().getTableName());
 
                     ImmutableList.Builder<ColumnMetadata> columns = ImmutableList.builder();
-                    for (ViewColumn column : deserializeView(entry.getValue().getViewData()).getColumns()) {
-                        columns.add(new ColumnMetadata(column.getName(), column.getType()));
+//                    for (ViewColumn column : deserializeView(entry.getValue().getViewData()).getColumns()) {
+//                        columns.add(new ColumnMetadata(column.getName(), column.getType()));
+//                    }
+                    try {
+                        for (ViewColumn column : deserializeView(session, entry.getValue()).getColumns()) {
+                            columns.add(new ColumnMetadata(column.getName(), column.getType()));
+                        }
+                        tableColumns.put(tableName, columns.build());
+                    }
+                    catch (PrestoException e) {
+                        // Ignore the incompatible views
+                        continue;
                     }
 
                     tableColumns.put(tableName, columns.build());
@@ -976,7 +997,14 @@ public class MetadataManager
                             prefix.getCatalogName(),
                             entry.getKey().getSchemaName(),
                             entry.getKey().getTableName());
-                    views.put(viewName, deserializeView(entry.getValue().getViewData()));
+//                    views.put(viewName, deserializeView(entry.getValue().getViewData()));
+                    try {
+                        views.put(viewName, deserializeView(session, entry.getValue()));
+                    }
+                    catch (PrestoException e) {
+                        // Ignore incompatible views
+                        continue;
+                    }
                 }
             }
         }
@@ -997,11 +1025,20 @@ public class MetadataManager
                     viewName.asSchemaTableName().toSchemaTablePrefix());
             ConnectorViewDefinition view = views.get(viewName.asSchemaTableName());
             if (view != null) {
-                ViewDefinition definition = deserializeView(view.getViewData());
-                if (view.getOwner().isPresent()) {
-                    definition = definition.withOwner(view.getOwner().get());
+//                ViewDefinition definition = deserializeView(view.getViewData());
+//                ViewDefinition definition = deserializeView(session, view);
+//                if (view.getOwner().isPresent()) {
+//                    definition = definition.withOwner(view.getOwner().get());
+//                }
+                try{
+                    ViewDefinition definition = deserializeView(session, view);
+                    if (view.getOwner().isPresent()) {
+                        definition = definition.withOwner(view.getOwner().get());
+                    }
+                    return Optional.of(definition);
+                }catch (PrestoException e) {
+                    return Optional.empty();
                 }
-                return Optional.of(definition);
             }
         }
         return Optional.empty();
@@ -1256,13 +1293,57 @@ public class MetadataManager
         return getCatalogMetadata(session, connectorId).getConnectorCapabilities();
     }
 
-    private ViewDefinition deserializeView(String data)
+//    private ViewDefinition deserializeView(String data)
+//    {
+//        try {
+//            return viewCodec.fromJson(data);
+//        }
+//        catch (IllegalArgumentException e) {
+//            throw new PrestoException(INVALID_VIEW, "Invalid view JSON: " + data, e);
+//        }
+//    }
+
+    private ViewDefinition deserializeView(Session session, ConnectorViewDefinition view)
+    {
+        if (view.getViewData() != null) {
+            return deserializeJsonViewData(view.getViewData());
+        }
+        else if (view.getOriginalSql() != null) {
+            return deserializeSqlViewData(session, view.getOriginalSql(), view.getOwner().get());
+        }
+        else {
+            throw new PrestoException(INVALID_VIEW, "Invalid view name: " + view.getName());
+        }
+    }
+
+    private ViewDefinition deserializeJsonViewData(String viewJson)
     {
         try {
-            return viewCodec.fromJson(data);
+            //return viewCodec.fromJson(data);
+            return viewCodec.fromJson(viewJson);
         }
         catch (IllegalArgumentException e) {
-            throw new PrestoException(INVALID_VIEW, "Invalid view JSON: " + data, e);
+            //throw new PrestoException(INVALID_VIEW, "Invalid view JSON: " + data, e);
+            throw new PrestoException(INVALID_VIEW, "Invalid view JSON: " + viewJson, e);
+        }
+    }
+
+    private ViewDefinition deserializeSqlViewData(Session session, String data, String owner)
+    {
+        try {
+            SqlParser sqlParser = new SqlParser();
+            Analyzer analyzer = new Analyzer(session, this, sqlParser, accessControl,
+                    Optional.<QueryExplainer>empty(), new ArrayList(), WarningCollector.NOOP);
+            Statement statement = sqlParser.createStatement(data);
+            Analysis analysis = analyzer.analyze(statement);
+            List<ViewColumn> columns = analysis.getOutputDescriptor()
+                    .getVisibleFields().stream()
+                    .map(field -> new ViewColumn(field.getName().get(), field.getType()))
+                    .collect(toImmutableList());
+            return new ViewDefinition(data, session.getCatalog(), session.getSchema(), columns, Optional.of(owner));
+        }
+        catch (Exception e) {
+            throw new PrestoException(INVALID_VIEW, "Invalid View with SQL: " + data, e);
         }
     }
 
