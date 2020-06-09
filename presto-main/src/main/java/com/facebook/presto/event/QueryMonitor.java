@@ -625,7 +625,7 @@ public class QueryMonitor
                         }
 
                         connection =  druidDataSource.getConnection();
-                        ps =  connection.prepareStatement("insert into presto_query_result_log" +
+                        ps =  connection.prepareStatement("replace into presto_query_result_log" +
                                 "(query_start_time,user,user_address,client_info,source,catalog,`schema`," +
                                 "resource_group_name,server_address,server_version,environment,query_id,query,`error_message`,`state`,`query_end_time`" +
                                 ",`elapsed_time`,`scheduling_time`,`running_time`,`finishing_time`,`planning_time`,`queued_time`)" +
@@ -694,7 +694,7 @@ public class QueryMonitor
                             return;
                         }
                         connection =  druidDataSource.getConnection();
-                        ps =  connection.prepareStatement("insert into presto_query_resource_log" +
+                        ps =  connection.prepareStatement("replace into presto_query_resource_log" +
                                 "(query_start_time,query_id,total_cpu_time,total_user_time,total_schedule_time,total_blocked_time,total_drivers,total_tasks,raw_input_datasize" +
                                 ",raw_input_positions,output_datasize,output_positions,processed_input_datasize,processed_input_positions,written_datasize" +
                                 ",written_positions,cumulative_memory,total_memory_reservation,peak_memory_reservation)" +
@@ -824,7 +824,7 @@ public class QueryMonitor
                         }
 
                         connection =  druidDataSource.getConnection();
-                        ps =  connection.prepareStatement("insert into presto_query_result_log" +
+                        ps =  connection.prepareStatement("replace into presto_query_result_log" +
                                 "(query_start_time,user,user_address,client_info,source,catalog,`schema`," +
                                 "resource_group_name,server_address,server_version,environment,query_id,query,`error_message`,`state`,`query_end_time`" +
                                 ",`elapsed_time`,`scheduling_time`,`running_time`,`finishing_time`,`planning_time`,`queued_time`)" +
@@ -891,7 +891,7 @@ public class QueryMonitor
                             return;
                         }
                         connection =  druidDataSource.getConnection();
-                        ps =  connection.prepareStatement("insert into presto_query_resource_log" +
+                        ps =  connection.prepareStatement("replace into presto_query_resource_log" +
                                 "(query_start_time,query_id,total_cpu_time,total_user_time,total_schedule_time,total_blocked_time,total_drivers,total_tasks,raw_input_datasize" +
                                 ",raw_input_positions,output_datasize,output_positions,processed_input_datasize,processed_input_positions,written_datasize" +
                                 ",written_positions,cumulative_memory,total_memory_reservation,peak_memory_reservation)" +
