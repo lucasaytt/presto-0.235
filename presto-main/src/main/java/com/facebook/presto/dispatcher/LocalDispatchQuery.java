@@ -79,21 +79,7 @@ public class LocalDispatchQuery
         addExceptionCallback(queryExecutionFuture, stateMachine::transitionToFailed);
         stateMachine.addStateChangeListener(state -> {
             if (state.isDone()) {
-                //QueryInfo queryInfo = stateMachine.getFinalQueryInfo().get();
                 QueryInfo queryInfo = stateMachine.getQueryInfo(Optional.empty());
-
-                try{
-                    log.info("=====error message 2===="+queryInfo.getFailureInfo().getMessage());
-                }catch (Exception e){
-                    log.info(e.getMessage());
-                }
-
-                try {
-                    log.info("=====error message 3===="+stateMachine.getFailureInfo().get().getMessage());
-                }catch (Exception e){
-                    log.info(e.getMessage());
-                }
-
                 queryMonitor.queryCompletedEvent(queryInfo);
                 submitted.set(null);
             }
