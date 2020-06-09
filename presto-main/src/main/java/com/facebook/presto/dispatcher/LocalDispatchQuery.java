@@ -15,6 +15,7 @@ package com.facebook.presto.dispatcher;
 
 import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
+import com.facebook.presto.event.QueryMonitor;
 import com.facebook.presto.execution.ClusterSizeMonitor;
 import com.facebook.presto.execution.ExecutionFailureInfo;
 import com.facebook.presto.execution.QueryExecution;
@@ -66,7 +67,8 @@ public class LocalDispatchQuery
             ListenableFuture<QueryExecution> queryExecutionFuture,
             ClusterSizeMonitor clusterSizeMonitor,
             Executor queryExecutor,
-            Consumer<QueryExecution> querySubmitter)
+            Consumer<QueryExecution> querySubmitter,
+            QueryMonitor queryMonitor)
     {
         this.stateMachine = requireNonNull(stateMachine, "stateMachine is null");
         this.queryExecutionFuture = requireNonNull(queryExecutionFuture, "queryExecutionFuture is null");
@@ -77,6 +79,8 @@ public class LocalDispatchQuery
         addExceptionCallback(queryExecutionFuture, stateMachine::transitionToFailed);
         stateMachine.addStateChangeListener(state -> {
             if (state.isDone()) {
+                QueryInfo queryInfo = stateMachine.updateQueryInfo(Optional.empty());
+                queryMonitor.queryCompletedEvent(queryInfo);
                 submitted.set(null);
             }
         });

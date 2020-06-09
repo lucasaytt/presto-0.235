@@ -17,6 +17,7 @@ import com.facebook.presto.Session;
 import com.facebook.presto.event.QueryMonitor;
 import com.facebook.presto.execution.ExecutionFailureInfo;
 import com.facebook.presto.execution.LocationFactory;
+import com.facebook.presto.execution.QueryInfo;
 import com.facebook.presto.server.BasicQueryInfo;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 
@@ -54,9 +55,11 @@ public class FailedDispatchQueryFactory
                 executor);
 
         BasicQueryInfo queryInfo = failedDispatchQuery.getBasicQueryInfo();
+        QueryInfo final_queryInfo = failedDispatchQuery.getQueryInfo();
 
         queryMonitor.queryCreatedEvent(queryInfo);
         queryMonitor.queryImmediateFailureEvent(queryInfo, failure);
+        queryMonitor.queryCompletedImmediateFailureEvent(final_queryInfo,failure);
 
         return failedDispatchQuery;
     }

@@ -58,6 +58,7 @@ import static java.util.stream.Collectors.joining;
 
 public final class SystemSessionProperties
 {
+    public static final String VISIT_IN_PREDICATE = "visit_in_predicate";
     public static final String OPTIMIZE_HASH_GENERATION = "optimize_hash_generation";
     public static final String JOIN_DISTRIBUTION_TYPE = "join_distribution_type";
     public static final String JOIN_MAX_BROADCAST_TABLE_SIZE = "join_max_broadcast_table_size";
@@ -176,6 +177,11 @@ public final class SystemSessionProperties
                         OPTIMIZE_HASH_GENERATION,
                         "Compute hash codes for distribution, joins, and aggregations early in query plan",
                         featuresConfig.isOptimizeHashGeneration(),
+                        false),
+                booleanProperty(
+                        VISIT_IN_PREDICATE,
+                        "Enable visit in predicate",
+                        featuresConfig.isVisitInPredicate(),
                         false),
                 booleanProperty(
                         DISTRIBUTED_JOIN,
@@ -1292,5 +1298,9 @@ public final class SystemSessionProperties
     public static boolean isOptimizeCommonSubExpressions(Session session)
     {
         return session.getSystemProperty(OPTIMIZE_COMMON_SUB_EXPRESSIONS, Boolean.class);
+    }
+    public static boolean isVisitInPredicate(Session session)
+    {
+        return session.getSystemProperty(VISIT_IN_PREDICATE, Boolean.class);
     }
 }

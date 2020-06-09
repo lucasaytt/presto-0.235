@@ -152,7 +152,22 @@ public class FeaturesConfig
     private boolean useLegacyScheduler = true;
     private boolean optimizeCommonSubExpressions = true;
 
+
+    private boolean visitInPredicate = false;
+
     private PartitioningPrecisionStrategy partitioningPrecisionStrategy = PartitioningPrecisionStrategy.AUTOMATIC;
+
+    public boolean isVisitInPredicate() {
+        return visitInPredicate;
+    }
+
+    @Config("visit.in-predicate")
+    @ConfigDescription("Enable visit in predicate")
+    public FeaturesConfig setVisitInPredicate(boolean visitInPredicate) {
+        this.visitInPredicate = visitInPredicate;
+        return this;
+    }
+//    private PartitioningPrecisionStrategy partitioningPrecisionStrategy = PartitioningPrecisionStrategy.AUTOMATIC;
 
     public enum PartitioningPrecisionStrategy
     {

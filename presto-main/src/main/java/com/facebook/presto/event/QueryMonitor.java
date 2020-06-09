@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.event;
 
+import com.alibaba.druid.pool.DruidDataSource;
+import com.alibaba.druid.pool.DruidPooledConnection;
 import com.facebook.airlift.json.JsonCodec;
 import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.node.NodeInfo;
@@ -62,12 +64,13 @@ import org.joda.time.DateTime;
 
 import javax.inject.Inject;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.sql.PreparedStatement;
+import java.sql.Timestamp;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
+import static com.facebook.airlift.concurrent.Threads.threadsNamed;
 import static com.facebook.presto.execution.QueryState.QUEUED;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.textDistributedPlan;
@@ -77,6 +80,7 @@ import static java.lang.Math.toIntExact;
 import static java.time.Duration.ofMillis;
 import static java.time.Instant.ofEpochMilli;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.Executors.newFixedThreadPool;
 
 public class QueryMonitor
 {
@@ -93,6 +97,10 @@ public class QueryMonitor
     private final SessionPropertyManager sessionPropertyManager;
     private final FunctionManager functionManager;
     private final int maxJsonLimit;
+    private DruidDataSource druidDataSource;
+    private boolean poolMonitor;
+    private ExecutorService queryLogExecutor;
+    private boolean enableMonitor = false;
 
     @Inject
     public QueryMonitor(
@@ -116,6 +124,25 @@ public class QueryMonitor
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
         this.functionManager = requireNonNull(metadata, "metadata is null").getFunctionManager();
         this.maxJsonLimit = toIntExact(requireNonNull(config, "config is null").getMaxOutputStageJsonSize().toBytes());
+        enableMonitor = config.isEnableMonitor();
+        if(config.isEnableMonitor()){
+            this.druidDataSource = new DruidDataSource();
+            this.druidDataSource.setDriverClassName("com.mysql.jdbc.Driver");
+            this.druidDataSource.setUrl(config.getUrl());
+            this.druidDataSource.setUsername(config.getUserName());
+            this.druidDataSource.setPassword(config.getPassword());
+            this.druidDataSource.setInitialSize(1);
+            this.druidDataSource.setMaxActive(config.getMaxActive());
+            this.druidDataSource.setMaxWait(config.getMaxWait());
+            this.druidDataSource.setTimeBetweenEvictionRunsMillis(60000);
+            this.druidDataSource.setMinEvictableIdleTimeMillis(300000);
+            this.druidDataSource.setValidationQuery("select 1");
+            this.druidDataSource.setTestWhileIdle(true);
+            this.druidDataSource.setTestOnBorrow(false);
+            this.druidDataSource.setTestOnReturn(false);
+            this.poolMonitor = config.isPoolMonitor();
+            this.queryLogExecutor = newFixedThreadPool(4,threadsNamed("query-log-%s"));
+        }
     }
 
     public void queryCreatedEvent(BasicQueryInfo queryInfo)
@@ -133,10 +160,85 @@ public class QueryMonitor
                                 Optional.empty(),
                                 Optional.empty(),
                                 Optional.empty())));
+        if(!enableMonitor){
+            return;
+        }
+
+        queryLogExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                DruidPooledConnection connection = null;
+                PreparedStatement ps = null;
+                try {
+
+                    if(queryInfo.getQuery().contains("SHOW FUNCTIONS") || queryInfo.getQuery().contains("information_schema.tables")){
+                        return;
+                    }
+
+                    if (poolMonitor){
+                        log.info("QueryLog DataSource monitor:activeCount:%s,connectCount:%s,poolingCount:%s,recycleCount:%s,closeCount:%s,createCount:%s,destroyCount:%s,discardCount:%s,errorCount:%s",
+                                druidDataSource.getActiveCount(),
+                                druidDataSource.getConnectCount(),
+                                druidDataSource.getPoolingCount(),
+                                druidDataSource.getRecycleCount(),
+                                druidDataSource.getCloseCount(),
+                                druidDataSource.getCreateCount(),
+                                druidDataSource.getDestroyCount(),
+                                druidDataSource.getDiscardCount(),
+                                druidDataSource.getErrorCount());
+                        log.info("sql:%s", queryInfo.getQuery());
+                    }
+                    connection =  druidDataSource.getConnection();
+                    ps =  connection.prepareStatement("insert into presto_query_create_log" +
+                            "(create_time,user,user_address,client_info,source,catalog,`schema`," +
+                            "resource_group_name,server_address,server_version,environment,query_id,`query`,`state`)" +
+                            "values" +
+                            "(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                    Date date = queryInfo.getQueryStats().getCreateTime().toLocalDateTime().toDate();
+                    ps.setTimestamp(1,new Timestamp(date.getTime()));
+                    ps.setString(2,queryInfo.getSession().getUser());
+                    ps.setString(3,queryInfo.getSession().getRemoteUserAddress().orElse("未知"));
+                    ps.setString(4,queryInfo.getSession().getClientInfo().orElse("未知"));
+                    ps.setString(5,queryInfo.getSession().getSource().orElse("未知"));
+                    ps.setString(6,queryInfo.getSession().getCatalog().orElse("hive"));
+                    ps.setString(7,queryInfo.getSession().getSchema().orElse("temp"));
+                    if (!queryInfo.getResourceGroupId().isPresent()){
+                        ps.setString(8,"default");
+                    } else {
+                        ps.setString(8,queryInfo.getResourceGroupId().get().toString());
+                    }
+                    ps.setString(9,serverAddress);
+                    ps.setString(10,serverVersion);
+                    ps.setString(11,environment);
+                    ps.setString(12,queryInfo.getQueryId().toString());
+                    ps.setString(13,queryInfo.getQuery());
+                    ps.setString(14,queryInfo.getState().toString());
+                    ps.execute();
+                }
+                catch (Exception e){
+                    log.warn(e, "save query create log error");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (ps != null){
+                            ps.close();
+                        }
+                        if (connection != null){
+                            connection.recycle();
+                        }
+                    }catch (Exception e){
+                        log.error(e, "close jdbc resource error");
+                    }
+                }
+            }
+        });
     }
 
     public void queryImmediateFailureEvent(BasicQueryInfo queryInfo, ExecutionFailureInfo failure)
     {
+        log.info("=====queryImmediateFailureEvent====");
         eventListenerManager.queryCompleted(new QueryCompletedEvent(
                 new QueryMetadata(
                         queryInfo.getQueryId().toString(),
@@ -185,6 +287,29 @@ public class QueryMonitor
         logQueryTimeline(queryInfo);
     }
 
+    public void queryCompletedImmediateFailureEvent(QueryInfo queryInfo,ExecutionFailureInfo e)
+    {
+        log.info("========queryCompletedImmediateFailureEvent==========");
+        QueryStats queryStats = queryInfo.getQueryStats();
+        eventListenerManager.queryCompleted(
+                new QueryCompletedEvent(
+                        createQueryMetadata(queryInfo),
+                        createQueryStatistics(queryInfo),
+                        createQueryContext(queryInfo.getSession(), queryInfo.getResourceGroupId()),
+                        getQueryIOMetadata(queryInfo),
+                        createQueryFailureInfo(queryInfo.getFailureInfo(), queryInfo.getOutputStage()),
+                        queryInfo.getWarnings(),
+                        queryInfo.getQueryType(),
+                        queryInfo.getFailedTasks().orElse(ImmutableList.of()).stream()
+                                .map(TaskId::toString)
+                                .collect(toImmutableList()),
+                        ofEpochMilli(queryStats.getCreateTime().getMillis()),
+                        ofEpochMilli(queryStats.getExecutionStartTime().getMillis()),
+                        ofEpochMilli(queryStats.getEndTime() != null ? queryStats.getEndTime().getMillis() : 0)));
+
+        logQuery(queryInfo,e);
+    }
+
     public void queryCompletedEvent(QueryInfo queryInfo)
     {
         QueryStats queryStats = queryInfo.getQueryStats();
@@ -204,7 +329,7 @@ public class QueryMonitor
                         ofEpochMilli(queryStats.getExecutionStartTime().getMillis()),
                         ofEpochMilli(queryStats.getEndTime() != null ? queryStats.getEndTime().getMillis() : 0)));
 
-        logQueryTimeline(queryInfo);
+        logQuery(queryInfo);
     }
 
     public static ResourceDistribution createResourceDistribution(
@@ -423,7 +548,7 @@ public class QueryMonitor
         return ImmutableMap.copyOf(mergedProperties);
     }
 
-    private static void logQueryTimeline(QueryInfo queryInfo)
+    private void logQuery(QueryInfo queryInfo)
     {
         try {
             QueryStats queryStats = queryInfo.getQueryStats();
@@ -473,9 +598,10 @@ public class QueryMonitor
             long scheduling = max(firstTaskStartTime - queryStartTime.getMillis() - planning, 0);
             long running = max(lastTaskEndTime - firstTaskStartTime, 0);
             long finishing = max(queryEndTime.getMillis() - lastTaskEndTime, 0);
+            long queued = queryStats.getQueuedTime().toMillis();
 
             logQueryTimeline(
-                    queryInfo.getQueryId(),
+                    queryInfo.getQueryId(),queryInfo.getState().name(),
                     queryInfo.getSession().getTransactionId().map(TransactionId::toString).orElse(""),
                     elapsed,
                     planning,
@@ -484,6 +610,334 @@ public class QueryMonitor
                     finishing,
                     queryStartTime,
                     queryEndTime);
+            if(!enableMonitor){
+                return;
+            }
+            queryLogExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    DruidPooledConnection connection = null;
+                    PreparedStatement ps = null;
+                    try {
+                        log.info("====save query result log====");
+                        if(queryInfo.getQuery().contains("SHOW FUNCTIONS") || queryInfo.getQuery().contains("information_schema.tables")){
+                            return;
+                        }
+
+                        connection =  druidDataSource.getConnection();
+                        ps =  connection.prepareStatement("insert into presto_query_result_log" +
+                                "(query_start_time,user,user_address,client_info,source,catalog,`schema`," +
+                                "resource_group_name,server_address,server_version,environment,query_id,query,`error_message`,`state`,`query_end_time`" +
+                                ",`elapsed_time`,`scheduling_time`,`running_time`,`finishing_time`,`planning_time`,`queued_time`)" +
+                                "values" +
+                                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        String errorMessage = null;
+                        if (queryInfo.getFailureInfo() != null) {
+                            errorMessage = queryInfo.getFailureInfo().getMessage();
+                        }
+
+                        ps.setTimestamp(1,new Timestamp(queryStartTime.toDate().getTime()));
+                        ps.setString(2,queryInfo.getSession().getUser());
+                        ps.setString(3,queryInfo.getSession().getRemoteUserAddress().orElse("未知"));
+                        ps.setString(4,queryInfo.getSession().getClientInfo().orElse("未知"));
+                        ps.setString(5,queryInfo.getSession().getSource().orElse("未知"));
+                        ps.setString(6,queryInfo.getSession().getCatalog().orElse("hive"));
+                        ps.setString(7,queryInfo.getSession().getSchema().orElse("temp"));
+                        if (!queryInfo.getResourceGroupId().isPresent()){
+                            ps.setString(8,"default");
+                        } else {
+                            ps.setString(8,queryInfo.getResourceGroupId().get().toString());
+                        }
+                        ps.setString(9,serverAddress);
+                        ps.setString(10,serverVersion);
+                        ps.setString(11,environment);
+                        ps.setString(12,queryInfo.getQueryId().toString());
+                        ps.setString(13,queryInfo.getQuery());
+                        ps.setString(14,errorMessage);
+                        ps.setString(15,queryInfo.getState().toString());
+                        ps.setTimestamp(16,new Timestamp(queryEndTime.toDate().getTime()));
+                        ps.setLong(17,max(elapsed,0));
+                        ps.setLong(18,max(scheduling,0));
+                        ps.setLong(19,max(running,0));
+                        ps.setLong(20,max(finishing,0));
+                        ps.setLong(21,max(planning,0));
+                        ps.setLong(22,max(queued,0));
+                        ps.execute();
+                    }
+                    catch (Exception e){
+                        log.warn(e, "save query result log error");
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (ps != null){
+                                ps.close();
+                            }
+                            if (connection != null){
+                                connection.recycle();
+                            }
+                        }catch (Exception e){
+                            log.error(e, "close jdbc resource error");
+                        }
+                    }
+                }
+            });
+            queryLogExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    log.info("====save query resource log====");
+                    DruidPooledConnection connection = null;
+                    PreparedStatement ps = null;
+                    try {
+                        if(queryInfo.getQuery().contains("SHOW FUNCTIONS") || queryInfo.getQuery().contains("information_schema.tables")){
+                            return;
+                        }
+                        connection =  druidDataSource.getConnection();
+                        ps =  connection.prepareStatement("insert into presto_query_resource_log" +
+                                "(query_start_time,query_id,total_cpu_time,total_user_time,total_schedule_time,total_blocked_time,total_drivers,total_tasks,raw_input_datasize" +
+                                ",raw_input_positions,output_datasize,output_positions,processed_input_datasize,processed_input_positions,written_datasize" +
+                                ",written_positions,cumulative_memory,total_memory_reservation,peak_memory_reservation)" +
+                                "values" +
+                                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        ps.setTimestamp(1,new Timestamp(queryStartTime.toDate().getTime()));
+                        ps.setString(2,queryInfo.getQueryId().toString());
+                        ps.setLong(3,queryStats.getTotalCpuTime().toMillis());
+                        ps.setLong(4,queryStats.getRetriedCpuTime().toMillis());
+                        ps.setLong(5,queryStats.getTotalScheduledTime().toMillis());
+                        ps.setLong(6,queryStats.getTotalBlockedTime().toMillis());
+                        ps.setLong(7,queryStats.getTotalDrivers());
+                        ps.setLong(8,queryStats.getTotalTasks());
+                        ps.setLong(9,queryStats.getRawInputDataSize().toBytes());
+                        ps.setLong(10,queryStats.getRawInputPositions());
+                        ps.setLong(11,queryStats.getOutputDataSize().toBytes());
+                        ps.setLong(12,queryStats.getOutputPositions());
+                        ps.setLong(13,queryStats.getProcessedInputDataSize().toBytes());
+                        ps.setLong(14,queryStats.getProcessedInputPositions());
+                        ps.setLong(15,queryStats.getWrittenIntermediatePhysicalDataSize().toBytes());
+                        ps.setLong(16,queryStats.getWrittenOutputPositions());
+                        ps.setDouble(17,queryStats.getCumulativeUserMemory());
+                        ps.setLong(18,queryStats.getTotalMemoryReservation().toBytes());
+                        ps.setLong(19,queryStats.getPeakUserMemoryReservation().toBytes());
+                        ps.execute();
+
+                    }
+                    catch (Exception e){
+                        log.warn(e, "save query resource log error");
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (ps != null){
+                                ps.close();
+                            }
+                            if (connection != null){
+                                connection.recycle();
+                            }
+                        }catch (Exception e){
+                            log.error(e, "close jdbc resource error");
+                        }
+                    }
+                }
+            });
+        }
+        catch (Exception e) {
+            log.error(e, "Error logging query timeline");
+        }
+    }
+
+    private void logQuery(QueryInfo queryInfo, ExecutionFailureInfo error)
+    {
+        try {
+            QueryStats queryStats = queryInfo.getQueryStats();
+            DateTime queryStartTime = queryStats.getCreateTime();
+            DateTime queryEndTime = queryStats.getEndTime();
+
+            // query didn't finish cleanly
+            if (queryStartTime == null || queryEndTime == null) {
+                return;
+            }
+
+            // planning duration -- start to end of planning
+            long planning = queryStats.getTotalPlanningTime().toMillis();
+
+            List<StageInfo> stages = getAllStages(queryInfo.getOutputStage());
+            // long lastSchedulingCompletion = 0;
+            long firstTaskStartTime = queryEndTime.getMillis();
+            long lastTaskStartTime = queryStartTime.getMillis() + planning;
+            long lastTaskEndTime = queryStartTime.getMillis() + planning;
+            for (StageInfo stage : stages) {
+                // only consider leaf stages
+                if (!stage.getSubStages().isEmpty()) {
+                    continue;
+                }
+
+                for (TaskInfo taskInfo : stage.getLatestAttemptExecutionInfo().getTasks()) {
+                    TaskStats taskStats = taskInfo.getStats();
+
+                    DateTime firstStartTime = taskStats.getFirstStartTime();
+                    if (firstStartTime != null) {
+                        firstTaskStartTime = Math.min(firstStartTime.getMillis(), firstTaskStartTime);
+                    }
+
+                    DateTime lastStartTime = taskStats.getLastStartTime();
+                    if (lastStartTime != null) {
+                        lastTaskStartTime = max(lastStartTime.getMillis(), lastTaskStartTime);
+                    }
+
+                    DateTime endTime = taskStats.getEndTime();
+                    if (endTime != null) {
+                        lastTaskEndTime = max(endTime.getMillis(), lastTaskEndTime);
+                    }
+                }
+            }
+
+            long elapsed = max(queryEndTime.getMillis() - queryStartTime.getMillis(), 0);
+            long scheduling = max(firstTaskStartTime - queryStartTime.getMillis() - planning, 0);
+            long running = max(lastTaskEndTime - firstTaskStartTime, 0);
+            long finishing = max(queryEndTime.getMillis() - lastTaskEndTime, 0);
+            long queued = queryStats.getQueuedTime().toMillis();
+
+            logQueryTimeline(
+                    queryInfo.getQueryId(),queryInfo.getState().name(),
+                    queryInfo.getSession().getTransactionId().map(TransactionId::toString).orElse(""),
+                    elapsed,
+                    planning,
+                    scheduling,
+                    running,
+                    finishing,
+                    queryStartTime,
+                    queryEndTime);
+            if(!enableMonitor){
+                return;
+            }
+            queryLogExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    DruidPooledConnection connection = null;
+                    PreparedStatement ps = null;
+                    try {
+                        log.info("====save query result log====");
+                        if(queryInfo.getQuery().contains("SHOW FUNCTIONS") || queryInfo.getQuery().contains("information_schema.tables")){
+                            return;
+                        }
+
+                        connection =  druidDataSource.getConnection();
+                        ps =  connection.prepareStatement("insert into presto_query_result_log" +
+                                "(query_start_time,user,user_address,client_info,source,catalog,`schema`," +
+                                "resource_group_name,server_address,server_version,environment,query_id,query,`error_message`,`state`,`query_end_time`" +
+                                ",`elapsed_time`,`scheduling_time`,`running_time`,`finishing_time`,`planning_time`,`queued_time`)" +
+                                "values" +
+                                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        log.info("========"+error.getMessage());
+                        String errorMessage = error.getMessage();
+
+                        ps.setTimestamp(1,new Timestamp(queryStartTime.toDate().getTime()));
+                        ps.setString(2,queryInfo.getSession().getUser());
+                        ps.setString(3,queryInfo.getSession().getRemoteUserAddress().orElse("未知"));
+                        ps.setString(4,queryInfo.getSession().getClientInfo().orElse("未知"));
+                        ps.setString(5,queryInfo.getSession().getSource().orElse("未知"));
+                        ps.setString(6,queryInfo.getSession().getCatalog().orElse("hive"));
+                        ps.setString(7,queryInfo.getSession().getSchema().orElse("temp"));
+                        if (!queryInfo.getResourceGroupId().isPresent()){
+                            ps.setString(8,"default");
+                        } else {
+                            ps.setString(8,queryInfo.getResourceGroupId().get().toString());
+                        }
+                        ps.setString(9,serverAddress);
+                        ps.setString(10,serverVersion);
+                        ps.setString(11,environment);
+                        ps.setString(12,queryInfo.getQueryId().toString());
+                        ps.setString(13,queryInfo.getQuery());
+                        ps.setString(14,errorMessage);
+                        ps.setString(15,queryInfo.getState().toString());
+                        ps.setTimestamp(16,new Timestamp(queryEndTime.toDate().getTime()));
+                        ps.setLong(17,max(elapsed,0));
+                        ps.setLong(18,max(scheduling,0));
+                        ps.setLong(19,max(running,0));
+                        ps.setLong(20,max(finishing,0));
+                        ps.setLong(21,max(planning,0));
+                        ps.setLong(22,max(queued,0));
+                        ps.execute();
+                    }
+                    catch (Exception e){
+                        log.warn(e, "save query result log error");
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (ps != null){
+                                ps.close();
+                            }
+                            if (connection != null){
+                                connection.recycle();
+                            }
+                        }catch (Exception e){
+                            log.error(e, "close jdbc resource error");
+                        }
+                    }
+                }
+            });
+            queryLogExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    log.info("====save query resource log====");
+                    DruidPooledConnection connection = null;
+                    PreparedStatement ps = null;
+                    try {
+                        if(queryInfo.getQuery().contains("SHOW FUNCTIONS") || queryInfo.getQuery().contains("information_schema.tables")){
+                            return;
+                        }
+                        connection =  druidDataSource.getConnection();
+                        ps =  connection.prepareStatement("insert into presto_query_resource_log" +
+                                "(query_start_time,query_id,total_cpu_time,total_user_time,total_schedule_time,total_blocked_time,total_drivers,total_tasks,raw_input_datasize" +
+                                ",raw_input_positions,output_datasize,output_positions,processed_input_datasize,processed_input_positions,written_datasize" +
+                                ",written_positions,cumulative_memory,total_memory_reservation,peak_memory_reservation)" +
+                                "values" +
+                                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        ps.setTimestamp(1,new Timestamp(queryStartTime.toDate().getTime()));
+                        ps.setString(2,queryInfo.getQueryId().toString());
+                        ps.setLong(3,queryStats.getTotalCpuTime().toMillis());
+                        ps.setLong(4,queryStats.getRetriedCpuTime().toMillis());
+                        ps.setLong(5,queryStats.getTotalScheduledTime().toMillis());
+                        ps.setLong(6,queryStats.getTotalBlockedTime().toMillis());
+                        ps.setLong(7,queryStats.getTotalDrivers());
+                        ps.setLong(8,queryStats.getTotalTasks());
+                        ps.setLong(9,queryStats.getRawInputDataSize().toBytes());
+                        ps.setLong(10,queryStats.getRawInputPositions());
+                        ps.setLong(11,queryStats.getOutputDataSize().toBytes());
+                        ps.setLong(12,queryStats.getOutputPositions());
+                        ps.setLong(13,queryStats.getProcessedInputDataSize().toBytes());
+                        ps.setLong(14,queryStats.getProcessedInputPositions());
+                        ps.setLong(15,queryStats.getWrittenIntermediatePhysicalDataSize().toBytes());
+                        ps.setLong(16,queryStats.getWrittenOutputPositions());
+                        ps.setDouble(17,queryStats.getCumulativeUserMemory());
+                        ps.setLong(18,queryStats.getTotalMemoryReservation().toBytes());
+                        ps.setLong(19,queryStats.getPeakUserMemoryReservation().toBytes());
+                        ps.execute();
+
+                    }
+                    catch (Exception e){
+                        log.warn(e, "save query resource log error");
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (ps != null){
+                                ps.close();
+                            }
+                            if (connection != null){
+                                connection.recycle();
+                            }
+                        }catch (Exception e){
+                            log.error(e, "close jdbc resource error");
+                        }
+                    }
+                }
+            });
         }
         catch (Exception e) {
             log.error(e, "Error logging query timeline");
@@ -503,7 +957,7 @@ public class QueryMonitor
         long elapsed = max(queryEndTime.getMillis() - queryStartTime.getMillis(), 0);
 
         logQueryTimeline(
-                queryInfo.getQueryId(),
+                queryInfo.getQueryId(),queryInfo.getState().name(),
                 queryInfo.getSession().getTransactionId().map(TransactionId::toString).orElse(""),
                 elapsed,
                 elapsed,
@@ -516,6 +970,7 @@ public class QueryMonitor
 
     private static void logQueryTimeline(
             QueryId queryId,
+            String state,
             String transactionId,
             long elapsedMillis,
             long planningMillis,
@@ -525,8 +980,9 @@ public class QueryMonitor
             DateTime queryStartTime,
             DateTime queryEndTime)
     {
-        log.info("TIMELINE: Query %s :: Transaction:[%s] :: elapsed %sms :: planning %sms :: scheduling %sms :: running %sms :: finishing %sms :: begin %s :: end %s",
+        log.info("TIMELINE: Query %s=%s :: Transaction:[%s] :: elapsed %sms :: planning %sms :: scheduling %sms :: running %sms :: finishing %sms :: begin %s :: end %s",
                 queryId,
+                state,
                 transactionId,
                 elapsedMillis,
                 planningMillis,

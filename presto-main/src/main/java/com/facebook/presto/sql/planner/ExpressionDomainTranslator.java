@@ -13,10 +13,13 @@
  */
 package com.facebook.presto.sql.planner;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
+import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.execution.warnings.WarningCollector;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.OperatorNotFoundException;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.function.FunctionHandle;
 import com.facebook.presto.spi.predicate.DiscreteValues;
@@ -34,21 +37,7 @@ import com.facebook.presto.sql.ExpressionUtils;
 import com.facebook.presto.sql.InterpretedFunctionInvoker;
 import com.facebook.presto.sql.analyzer.ExpressionAnalyzer;
 import com.facebook.presto.sql.parser.SqlParser;
-import com.facebook.presto.sql.tree.AstVisitor;
-import com.facebook.presto.sql.tree.BetweenPredicate;
-import com.facebook.presto.sql.tree.BooleanLiteral;
-import com.facebook.presto.sql.tree.Cast;
-import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.sql.tree.InListExpression;
-import com.facebook.presto.sql.tree.InPredicate;
-import com.facebook.presto.sql.tree.IsNotNullPredicate;
-import com.facebook.presto.sql.tree.IsNullPredicate;
-import com.facebook.presto.sql.tree.LogicalBinaryExpression;
-import com.facebook.presto.sql.tree.NodeRef;
-import com.facebook.presto.sql.tree.NotExpression;
-import com.facebook.presto.sql.tree.NullLiteral;
-import com.facebook.presto.sql.tree.SymbolReference;
+import com.facebook.presto.sql.tree.*;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.PeekingIterator;
@@ -89,6 +78,8 @@ import static java.util.stream.Collectors.toList;
 @Deprecated
 public final class ExpressionDomainTranslator
 {
+    static Logger LOG = Logger.get(ExpressionDomainTranslator.class);
+
     private final LiteralEncoder literalEncoder;
 
     public ExpressionDomainTranslator(LiteralEncoder literalEncoder)
@@ -687,12 +678,40 @@ public final class ExpressionDomainTranslator
             InListExpression valueList = (InListExpression) node.getValueList();
             checkState(!valueList.getValues().isEmpty(), "InListExpression should never be empty");
 
+            long start = System.currentTimeMillis();
+            if(SystemSessionProperties.isVisitInPredicate(session)){
+                Symbol symbol = Symbol.from(node.getValue());
+                Type type = checkedTypeLookup(node.getValue());
+                // Check if we can bypass all the processing. If all the values in the IN clause are literals,
+                // and the type is orderable, we can just directly construct the SortedRangeSet.
+                if (type.isOrderable() && valueList.getValues().stream().allMatch(v -> (v instanceof Literal)||(v instanceof Cast))) {
+                    ArrayList<Range> ranges = new ArrayList<>(valueList.getValues().size());
+                    ConnectorSession connectorSession = this.session.toConnectorSession();
+                    for (Expression value : valueList.getValues()) {
+                        if(value instanceof Cast){
+                            Object obj = LiteralInterpreter.evaluate(metadata, connectorSession,((Cast)value).getExpression());
+                            ranges.add(Range.equal(type, obj));
+                        } else {
+                            Object obj = LiteralInterpreter.evaluate(metadata, connectorSession, value);
+                            ranges.add(Range.equal(type, obj));
+                        }
+                    }
+
+                    ValueSet rangeSet = complementIfNecessary(SortedRangeSet.copyOf(type, ranges), complement);
+                    ExtractionResult er = new ExtractionResult(
+                            TupleDomain.withColumnDomains(ImmutableMap.of(symbol.getName(), Domain.create(rangeSet, false))),
+                            TRUE_LITERAL);
+                    LOG.info("====cost time ===" + (System.currentTimeMillis()-start));
+                    return er;
+                }
+            }
+
             ImmutableList.Builder<Expression> disjuncts = ImmutableList.builder();
             for (Expression expression : valueList.getValues()) {
                 disjuncts.add(new ComparisonExpression(EQUAL, node.getValue(), expression));
             }
             ExtractionResult extractionResult = process(or(disjuncts.build()), complement);
-
+            LOG.info("====not in new logic cost time==== " + (System.currentTimeMillis()-start));
             // preserve original IN predicate as remaining predicate
             if (extractionResult.tupleDomain.isAll()) {
                 Expression originalPredicate = node;

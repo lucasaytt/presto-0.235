@@ -327,11 +327,20 @@ public class InternalResourceGroup
         }
     }
 
+    @Managed
     @Override
     public DataSize getSoftMemoryLimit()
     {
         synchronized (root) {
             return new DataSize(softMemoryLimitBytes, BYTE);
+        }
+    }
+
+    @Managed
+    public long getSoftMemoryLimitBytes()
+    {
+        synchronized (root) {
+            return softMemoryLimitBytes;
         }
     }
 
@@ -347,11 +356,20 @@ public class InternalResourceGroup
         }
     }
 
+    @Managed
     @Override
     public Duration getSoftCpuLimit()
     {
         synchronized (root) {
             return new Duration(softCpuLimitMillis, MILLISECONDS);
+        }
+    }
+
+    @Managed
+    public long getSoftCpuLimitMillis()
+    {
+        synchronized (root) {
+            return softCpuLimitMillis;
         }
     }
 
@@ -367,6 +385,30 @@ public class InternalResourceGroup
             if (canRunMore() != oldCanRun) {
                 updateEligibility();
             }
+        }
+    }
+
+    @Managed
+    public long getHardCpuLimitMillis()
+    {
+        synchronized (root) {
+            return hardCpuLimitMillis;
+        }
+    }
+
+    @Managed
+    public long getCpuUsageMillis()
+    {
+        synchronized (root) {
+            return cpuUsageMillis;
+        }
+    }
+
+    @Managed
+    public long getCachedMemoryUsageBytes()
+    {
+        synchronized (root) {
+            return cachedMemoryUsageBytes;
         }
     }
 
@@ -393,6 +435,7 @@ public class InternalResourceGroup
         }
     }
 
+    @Managed
     @Override
     public long getCpuQuotaGenerationMillisPerSecond()
     {
@@ -480,6 +523,7 @@ public class InternalResourceGroup
         return timeBetweenStartsSec;
     }
 
+    @Managed
     @Override
     public int getSchedulingWeight()
     {
