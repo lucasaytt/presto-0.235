@@ -42,9 +42,9 @@ public interface TypeManager
      */
     Collection<ParametricType> getParametricTypes();
 
-    Optional<Type> getCommonSuperType(Type firstType, Type secondType);
+    Optional<Type> getCommonSuperType(Type firstType, Type secondType, String ... functionNames);
 
-    boolean canCoerce(Type actualType, Type expectedType);
+    boolean canCoerce(Type actualType, Type expectedType, String ... functionNames);
 
     boolean isTypeOnlyCoercion(Type actualType, Type expectedType);
 

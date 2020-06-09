@@ -447,6 +447,11 @@ public class FunctionManager
             return functionNamespaceManager.getFunctionHandle(transactionHandle, match.get());
         }
 
+        match = matchFunctionWithCoercion(candidates, parameterTypes);
+        if (match.isPresent()) {
+            return functionNamespaceManager.getFunctionHandle(transactionHandle, match.get());
+        }
+
         throw new PrestoException(FUNCTION_NOT_FOUND, constructFunctionNotFoundErrorMessage(functionName, parameterTypes, candidates));
     }
 
@@ -500,7 +505,34 @@ public class FunctionManager
         }
 
         if (coercionAllowed) {
-            applicableFunctions = selectMostSpecificFunctions(applicableFunctions, parameters);
+//            applicableFunctions = selectMostSpecificFunctions(applicableFunctions, parameters);
+            String functionName = null;
+            if(candidates.size()>0){
+                int index = 0;
+                for (SqlFunction function : candidates) {
+                    index ++;
+                    Signature declaredSignature = function.getSignature();
+                    functionName = declaredSignature.getName().getFunctionName();
+                    if(index ==2){
+                        break;
+                    }
+                }
+            }
+            if (functionName !=null && functionName.length()>0){
+                //if("$operator$EQUAL".equals(functionName) || "$operator$GREATER_THAN".equals(functionName)){
+                if(functionName.startsWith("$operator$")){
+                    if(!parameters.get(0).getTypeSignature().getBase().equals(parameters.get(1).getTypeSignature().getBase())){
+                        applicableFunctions = selectMostSpecificFunctions(applicableFunctions.subList(0,1), parameters);
+                    }else {
+                        applicableFunctions = selectMostSpecificFunctions(applicableFunctions, parameters);
+                    }
+
+                }else {
+                    applicableFunctions = selectMostSpecificFunctions(applicableFunctions, parameters);
+                }
+            }else {
+                applicableFunctions = selectMostSpecificFunctions(applicableFunctions, parameters);
+            }
             checkState(!applicableFunctions.isEmpty(), "at least single function must be left");
         }
 
@@ -525,7 +557,7 @@ public class FunctionManager
         for (SqlFunction function : candidates) {
             Signature declaredSignature = function.getSignature();
             Optional<Signature> boundSignature = new SignatureBinder(typeManager, declaredSignature, allowCoercion)
-                    .bind(actualParameters);
+                    .bind(declaredSignature.getName().getFunctionName(),actualParameters);
             if (boundSignature.isPresent()) {
                 applicableFunctions.add(new ApplicableFunction(declaredSignature, boundSignature.get(), function.isCalledOnNullInput()));
             }

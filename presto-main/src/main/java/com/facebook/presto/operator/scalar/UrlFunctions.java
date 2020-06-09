@@ -148,7 +148,7 @@ public final class UrlFunctions
     }
 
     @Description("escape a string for use in URL query parameter names and values")
-    @ScalarFunction
+    @ScalarFunction(value = "url_encode",alias = {"urlencoder"})
     @LiteralParameters({"x", "y"})
     @Constraint(variable = "y", expression = "min(2147483647, x * 12)")
     @SqlType("varchar(y)")
@@ -159,7 +159,7 @@ public final class UrlFunctions
     }
 
     @Description("unescape a URL-encoded string")
-    @ScalarFunction
+    @ScalarFunction(value = "url_decode",alias = {"urldecoder"})
     @LiteralParameters("x")
     @SqlType("varchar(x)")
     public static Slice urlDecode(@SqlType("varchar(x)") Slice value)

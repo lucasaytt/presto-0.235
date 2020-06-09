@@ -293,6 +293,7 @@ import static com.facebook.presto.operator.scalar.MapTransformKeyFunction.MAP_TR
 import static com.facebook.presto.operator.scalar.MapTransformValueFunction.MAP_TRANSFORM_VALUE_FUNCTION;
 import static com.facebook.presto.operator.scalar.MapZipWithFunction.MAP_ZIP_WITH_FUNCTION;
 import static com.facebook.presto.operator.scalar.MathFunctions.DECIMAL_MOD_FUNCTION;
+import static com.facebook.presto.operator.scalar.Nvl.nvl;
 import static com.facebook.presto.operator.scalar.Re2JCastToRegexpFunction.castCharToRe2JRegexp;
 import static com.facebook.presto.operator.scalar.Re2JCastToRegexpFunction.castVarcharToRe2JRegexp;
 import static com.facebook.presto.operator.scalar.RowDistinctFromOperator.ROW_DISTINCT_FROM;
@@ -657,6 +658,7 @@ public class BuiltInFunctionNamespaceManager
                 .function(CHECKSUM_AGGREGATION)
                 .function(IDENTITY_CAST)
                 .function(ARBITRARY_AGGREGATION)
+                .function(nvl)
                 .functions(GREATEST, LEAST)
                 .functions(MAX_BY, MIN_BY, MAX_BY_N_AGGREGATION, MIN_BY_N_AGGREGATION)
                 .functions(MAX_AGGREGATION, MIN_AGGREGATION, MAX_N_AGGREGATION, MIN_N_AGGREGATION)

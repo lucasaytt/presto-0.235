@@ -64,13 +64,13 @@ public class TestingTypeManager
     }
 
     @Override
-    public Optional<Type> getCommonSuperType(Type firstType, Type secondType)
+    public Optional<Type> getCommonSuperType(Type firstType, Type secondType, String ... functions)
     {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public boolean canCoerce(Type actualType, Type expectedType)
+    public boolean canCoerce(Type actualType, Type expectedType, String ... functions)
     {
         throw new UnsupportedOperationException();
     }

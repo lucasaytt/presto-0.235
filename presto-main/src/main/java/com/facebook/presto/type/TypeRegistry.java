@@ -73,6 +73,7 @@ import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
+import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
@@ -270,8 +271,25 @@ public final class TypeRegistry
     }
 
     @Override
-    public Optional<Type> getCommonSuperType(Type firstType, Type secondType)
+    public Optional<Type> getCommonSuperType(Type firstType, Type secondType, String ... functionNames)
     {
+        String function = null;
+        String sb = "";
+        if(functionNames != null){
+            if(functionNames.length > 0){
+                function = functionNames[0];
+            }
+            for(String str:functionNames){
+                sb = sb + "," +str;
+            }
+        }
+
+        if(function != null && function.length()>0 && "concat".equals(function)){
+            return Optional.of(VARCHAR);
+        }
+        if(function != null && function.length()>0 && "md5".equals(function)){
+            return Optional.of(VARCHAR);
+        }
         TypeCompatibility compatibility = compatibility(firstType, secondType);
         if (!compatibility.isCompatible()) {
             return Optional.empty();
@@ -280,7 +298,7 @@ public final class TypeRegistry
     }
 
     @Override
-    public boolean canCoerce(Type fromType, Type toType)
+    public boolean canCoerce(Type fromType, Type toType, String ... functionNames)
     {
         TypeCompatibility typeCompatibility = compatibility(fromType, toType);
         return typeCompatibility.isCoercible();
@@ -503,6 +521,8 @@ public final class TypeRegistry
                         return Optional.of(DOUBLE);
                     case StandardTypes.DECIMAL:
                         return Optional.of(createDecimalType(3, 0));
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
@@ -519,6 +539,8 @@ public final class TypeRegistry
                         return Optional.of(DOUBLE);
                     case StandardTypes.DECIMAL:
                         return Optional.of(createDecimalType(5, 0));
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
@@ -533,6 +555,8 @@ public final class TypeRegistry
                         return Optional.of(DOUBLE);
                     case StandardTypes.DECIMAL:
                         return Optional.of(createDecimalType(10, 0));
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
@@ -545,6 +569,8 @@ public final class TypeRegistry
                         return Optional.of(DOUBLE);
                     case StandardTypes.DECIMAL:
                         return Optional.of(createDecimalType(19, 0));
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
@@ -555,6 +581,8 @@ public final class TypeRegistry
                         return Optional.of(REAL);
                     case StandardTypes.DOUBLE:
                         return Optional.of(DOUBLE);
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
@@ -563,16 +591,30 @@ public final class TypeRegistry
                 switch (resultTypeBase) {
                     case StandardTypes.DOUBLE:
                         return Optional.of(DOUBLE);
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
             }
+
+            case StandardTypes.DOUBLE: {
+                switch (resultTypeBase) {
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
+                    default:
+                        return Optional.empty();
+                }
+            }
+
             case StandardTypes.DATE: {
                 switch (resultTypeBase) {
                     case StandardTypes.TIMESTAMP:
                         return Optional.of(TIMESTAMP);
                     case StandardTypes.TIMESTAMP_WITH_TIME_ZONE:
                         return Optional.of(TIMESTAMP_WITH_TIME_ZONE);
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
@@ -589,6 +631,8 @@ public final class TypeRegistry
                 switch (resultTypeBase) {
                     case StandardTypes.TIMESTAMP_WITH_TIME_ZONE:
                         return Optional.of(TIMESTAMP_WITH_TIME_ZONE);
+                    case StandardTypes.VARCHAR:
+                        return Optional.of(VARCHAR);
                     default:
                         return Optional.empty();
                 }
@@ -616,6 +660,10 @@ public final class TypeRegistry
                         return Optional.of(JSON_PATH);
                     case CodePointsType.NAME:
                         return Optional.of(CODE_POINTS);
+                    case StandardTypes.DOUBLE:
+                        return Optional.of(DOUBLE);
+                    case StandardTypes.DECIMAL:
+                        return Optional.of(DecimalType.createDecimalType());
                     default:
                         return Optional.empty();
                 }
@@ -639,6 +687,10 @@ public final class TypeRegistry
                         return Optional.of(JSON_PATH);
                     case CodePointsType.NAME:
                         return Optional.of(CODE_POINTS);
+                    case StandardTypes.DOUBLE:
+                        return Optional.of(DOUBLE);
+                    case StandardTypes.DECIMAL:
+                        return Optional.of(DecimalType.createDecimalType());
                     default:
                         return Optional.empty();
                 }
