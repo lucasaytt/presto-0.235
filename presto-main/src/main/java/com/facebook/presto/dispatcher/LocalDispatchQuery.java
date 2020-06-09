@@ -79,8 +79,8 @@ public class LocalDispatchQuery
         addExceptionCallback(queryExecutionFuture, stateMachine::transitionToFailed);
         stateMachine.addStateChangeListener(state -> {
             if (state.isDone()) {
-                QueryInfo queryInfo = stateMachine.updateQueryInfo(Optional.empty());
-                queryMonitor.queryCompletedEvent(queryInfo);
+//                QueryInfo queryInfo = stateMachine.updateQueryInfo(Optional.empty());
+//                queryMonitor.queryCompletedEvent(queryInfo);
                 submitted.set(null);
             }
         });
